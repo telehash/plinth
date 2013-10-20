@@ -33,10 +33,13 @@ dest_key = rsa.Key(DEST_KEY)
 session_ecc = ecc.Key(256)
 session_ecc_pub = session_ecc.public.as_string(format='der', ansi=True)
 
+iv = os.urandom(16)
+line_id = os.urandom(16)
+
 inner_open = {}
 inner_open['to'] = DEST_HASH
 inner_open['at'] = epoch_milli()
-inner_open['line'] = os.urandom(16).encode('hex')
+inner_open['line'] = line_id.encode('hex')
 
 # defaults to utf-8
 inner_open_json = json.dumps(inner_open, separators=(',', ':'), sort_keys=True)
@@ -49,8 +52,6 @@ id_key_len = len(id_key_pub)
 fmt_str = '!H' + str(inner_len) + 's' + str(id_key_len) + 's'
 inner_open_packet = pack(fmt_str, inner_len, inner_open_json, id_key_pub)
 
-iv = os.urandom(16)
-
 hasher = hash.new('sha256', session_ecc_pub)
 sym_key = cipher.aes(key=hasher.digest(), iv=iv, mode='ctr')
 outer_body = sym_key.encrypt(inner_open_packet)
@@ -61,9 +62,17 @@ outer_open['open'] = dest_key.encrypt( #encrypted to recipient
             session_ecc.public.as_string(format='der',ansi=True) #ANSI X9.63
             ).encode('base64').translate(None, '\n')
 
+hasher.update(line_id)
 sym_key = cipher.aes(key=hasher.digest(), iv=iv, mode='ctr')
 outer_open['iv'] = iv.encode('hex')
-outer_open['sig'] = sym_key.encrypt(id_key.sign(outer_body, hash='sha256')).encode('base64').translate(None, '\n')
+"""
+The default padding for pytomcrypt's rsa sign() is pss. The node implementation
+uses the older PKCS1 padding ('v1.5' in pytomcrypt) but that setting segfaults
+when I try it here. Updating the node implementation to use PSS padding doesn't
+seem to help anything either.
+"""
+outer_open['sig'] = sym_key.encrypt(id_key.sign(outer_body, hash='sha256')) \
+                           .encode('base64').translate(None, '\n')
 
 # defaults to utf-8
 outer_open_json = json.dumps(outer_open, separators=(',', ':'), sort_keys=True)

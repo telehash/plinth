@@ -7,9 +7,6 @@ from local_vars import DEST_KEY, DEST_HASH
 import os
 from struct import pack, unpack
 from tomcrypt import rsa, ecc, cipher, hash
-import Crypto.Signature.PKCS1_v1_5 as PKCS
-import Crypto.Hash.SHA256 as SHA256
-import Crypto.PublicKey.RSA as RSA
 import time
 
 def epoch_milli():
@@ -66,6 +63,7 @@ outer_open['open'] = dest_key.encrypt( #encrypted to recipient
             ).encode('base64').translate(None, '\n')
 outer_open['iv'] = iv.encode('hex')
 
+hasher = hash.new('sha256', session_ecc_pub)
 hasher.update(line_id)
 sym_key = cipher.aes(key=hasher.digest(), iv=iv, mode='ctr')
 """
@@ -74,16 +72,8 @@ uses the older PKCS1 padding ('v1.5' in pytomcrypt) but that setting segfaults
 when I try it here. Updating the node implementation to use PSS padding doesn't
 seem to help anything either.
 """
-
-id_key_new = RSA.importKey(id_key.as_string())
-hash_new = SHA256.new(outer_body)
-pkcs_new = PKCS.new(id_key_new)
-sig_new = pkcs_new.sign(hash_new)
-
-outer_open['sig'] = sym_key.encrypt(sig_new).encode('base64').translate(None, '\n')
-
-#outer_open['sig'] = sym_key.encrypt(id_key.sign(outer_body, hash='sha256')) \
-#                           .encode('base64').translate(None, '\n')
+outer_open['sig'] = sym_key.encrypt(id_key.sign(outer_body, hash='sha256')) \
+                           .encode('base64').translate(None, '\n')
 
 # defaults to utf-8
 outer_open_json = json.dumps(outer_open, separators=(',', ':'), sort_keys=True)

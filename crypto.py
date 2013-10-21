@@ -63,16 +63,16 @@ outer_open['open'] = dest_key.encrypt( #encrypted to recipient
             ).encode('base64').translate(None, '\n')
 outer_open['iv'] = iv.encode('hex')
 
-hasher = hash.new('sha256', session_ecc_pub)
 hasher.update(line_id)
 sym_key = cipher.aes(key=hasher.digest(), iv=iv, mode='ctr')
 """
-The default padding for pytomcrypt's rsa sign() is pss. The node implementation
-uses the older PKCS1 padding ('v1.5' in pytomcrypt) but that setting segfaults
-when I try it here. Updating the node implementation to use PSS padding doesn't
-seem to help anything either.
+The current version of PyTomCrypt won't hash the message before signing
+so we need to do this manually, but the underlying libTomCrypt still needs
+to know which hashing algorithm was used to sign properly.
 """
-outer_open['sig'] = sym_key.encrypt(id_key.sign(outer_body, hash='sha256')) \
+hasher = hash.new('sha256', outer_body)
+outer_open['sig'] = sym_key.encrypt(id_key.sign(hasher.digest(),
+                                padding='v1.5', hash='sha256')) \
                            .encode('base64').translate(None, '\n')
 
 # defaults to utf-8

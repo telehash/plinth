@@ -10,6 +10,7 @@ import socket
 from struct import pack, unpack
 
 from tomcrypt import rsa, ecc, cipher, hash
+from tomcrypt.utils import pem_encode
 
 def epoch_milli():
     return int(time.time() * 1000)
@@ -60,9 +61,8 @@ outer_body = sym_key.encrypt(inner_open_packet)
 
 outer_open = {}
 outer_open['type'] = 'open'
-outer_open['open'] = dest_key.encrypt( #encrypted to recipient
-            session_ecc.public.as_string(format='der',ansi=True) #ANSI X9.63
-            ).encode('base64').translate(None, '\n')
+outer_open['open'] = dest_key.encrypt(session_ecc_pub) \
+                             .encode('base64').translate(None, '\n')
 outer_open['iv'] = iv.encode('hex')
 
 hasher.update(line_id)
@@ -91,7 +91,26 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.sendto(outer_open_packet, (DEST_HOST, DEST_PORT))
 
 received = sock.recv(1500)
-print(len(received))
-print "Received: {}".format(received)
+fmt_str = '!H' + str(len(received)-2) + 's'
+received_len, received_open_packet = unpack(fmt_str, received)
 
+# being super reckless in the name reuse from here forward
+outer_open = json.loads(received_open_packet[:received_len])
+outer_body = received_open_packet[received_len:]
 
+remote_iv = outer_open['iv'].decode('hex')
+remote_ecc_key = id_key.decrypt(outer_open['open'].decode('base64'))
+hasher = hash.new('sha256', remote_ecc_key)
+sym_key = cipher.aes(key=hasher.digest(), iv=remote_iv, mode='ctr')
+inner_received = sym_key.decrypt(outer_body)
+fmt_str = '!H' + str(len(inner_received)-2) + 's'
+inner_len, inner_open_packet = unpack(fmt_str, inner_received)
+inner_open = json.loads(inner_open_packet[:inner_len])
+inner_body = inner_open_packet[inner_len:]
+remote_line = inner_open['line'].decode('hex')
+hasher.update(remote_line)
+sym_key = cipher.aes(key=hasher.digest(), iv=remote_iv, mode='ctr')
+remote_sig = sym_key.decrypt(outer_open['sig'].decode('base64'))
+hasher = hash.new('sha256', outer_body)
+verified = dest_key.verify(hasher.digest(), remote_sig, padding='v1.5', hash='sha256')
+print(verified)

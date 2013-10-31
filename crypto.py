@@ -3,11 +3,13 @@
 An early "lightning" attempt at getting TeleHash crypto working in Python
 """
 
-from local_vars import DEST_KEY, DEST_HASH
+from local_vars import DEST_KEY, DEST_HASH, DEST_HOST, DEST_PORT
 import os
-from struct import pack, unpack
-from tomcrypt import rsa, ecc, cipher, hash
 import time
+import socket
+from struct import pack, unpack
+
+from tomcrypt import rsa, ecc, cipher, hash
 
 def epoch_milli():
     return int(time.time() * 1000)
@@ -79,7 +81,17 @@ outer_open['sig'] = sym_key.encrypt(id_key.sign(hasher.digest(),
 outer_open_json = json.dumps(outer_open, separators=(',', ':'), sort_keys=True)
 
 outer_len = len(outer_open_json)
-id_key_len = len(id_key_pub)
+outer_body_len = len(outer_body)
 
-print(outer_open_json + '\n')
-print(outer_body.encode('hex') +'\n')
+# magical C string packing
+fmt_str = '!H' + str(outer_len) + 's' + str(outer_body_len) + 's'
+outer_open_packet = pack(fmt_str, outer_len, outer_open_json, outer_body)
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.sendto(outer_open_packet, (DEST_HOST, DEST_PORT))
+
+received = sock.recv(1500)
+print(len(received))
+print "Received: {}".format(received)
+
+

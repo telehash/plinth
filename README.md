@@ -10,15 +10,22 @@ Quickstart
 
 Prerequisite: http://virtualenvwrapper.readthedocs.org/en/latest/
 
+````
 $ mkvirtualenv plinth
-$ pip install -r requirements.txt
+(plinth)$ pip install -r requirements.txt
+````
 
 Create a local_vars.py and define your seed:
 
-DEST_KEY =
-DEST_HASH =
-DEST_HOST =
-DEST_PORT =
+````
+DEST_KEY = "-----BEGIN PUBLIC KEY----- ..."
+DEST_HASH = "168c4b41..."
+DEST_HOST = "192.168.1.42"
+DEST_PORT = 42424
+````
 
-$ python crypto.py
-
+And you should receive a "see" response:
+````
+$ workon plinth
+(plinth)$ python crypto.py
+````

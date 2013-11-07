@@ -103,6 +103,7 @@ remote_ecc_key = id_key.decrypt(outer_open['open'].decode('base64'))
 hasher = hash.new('sha256', remote_ecc_key)
 sym_key = cipher.aes(key=hasher.digest(), iv=remote_iv, mode='ctr')
 inner_received = sym_key.decrypt(outer_body)
+
 fmt_str = '!H' + str(len(inner_received)-2) + 's'
 inner_len, inner_open_packet = unpack(fmt_str, inner_received)
 inner_open = json.loads(inner_open_packet[:inner_len])
@@ -113,4 +114,69 @@ sym_key = cipher.aes(key=hasher.digest(), iv=remote_iv, mode='ctr')
 remote_sig = sym_key.decrypt(outer_open['sig'].decode('base64'))
 hasher = hash.new('sha256', outer_body)
 verified = dest_key.verify(hasher.digest(), remote_sig, padding='v1.5', hash='sha256')
-print(verified)
+
+line_secret = session_ecc.shared_secret(ecc.Key(remote_ecc_key))
+
+hasher = hash.new('sha256', line_secret)
+hasher.update(remote_line)
+hasher.update(line_id)
+dec_key = hasher.digest()
+
+hasher = hash.new('sha256', line_secret)
+hasher.update(line_id)
+hasher.update(remote_line)
+enc_key = hasher.digest()
+
+#Okay, let's "do a line"
+
+random_seek = os.urandom(32).encode('hex')
+print("Seeking: %s" % random_seek)
+channel_id = os.urandom(16).encode('hex')
+line_iv = os.urandom(16)
+
+payload = {}
+payload['c'] = channel_id
+payload['type'] = 'seek'
+payload['seek'] = random_seek
+payload['seq'] = 0
+payload_json = json.dumps(payload, separators=(',', ':'), sort_keys=True)
+
+payload_len = len(payload_json)
+
+fmt_str = '!H' + str(payload_len) + 's'
+payload_packet = pack(fmt_str, payload_len, payload_json)
+
+sym_key = cipher.aes(key=enc_key, iv=line_iv, mode='ctr')
+line_body = sym_key.encrypt(payload_packet)
+
+outer_line = {}
+outer_line['type'] = 'line'
+outer_line['line'] = remote_line.encode('hex')
+outer_line['iv'] = line_iv.encode('hex')
+outer_line_json = json.dumps(outer_line, separators=(',', ':'), sort_keys=True)
+
+outer_line_len = len(outer_line_json)
+line_body_len = len(line_body)
+
+fmt_str = '!H' + str(outer_line_len) + 's' + str(line_body_len) + 's'
+line_packet = pack(fmt_str, outer_line_len, outer_line_json, line_body)
+
+sock.sendto(line_packet, (DEST_HOST, DEST_PORT))
+
+received = sock.recv(1500)
+
+fmt_str = '!H' + str(len(received)-2) + 's'
+received_len, received_line_packet = unpack(fmt_str, received)
+
+received_line = json.loads(received_line_packet[:received_len])
+
+remote_line_iv = received_line['iv'].decode('hex')
+sym_key = cipher.aes(key=dec_key, iv=remote_line_iv, mode='ctr')
+
+received_line_body = sym_key.decrypt(received_line_packet[received_len:])
+print(received_line)
+
+fmt_str = '!H' + str(len(received_line_body)-2) + 's'
+received_len, received_line_payload = unpack(fmt_str, received_line_body)
+
+print(received_line_payload)

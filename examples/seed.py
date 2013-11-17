@@ -41,7 +41,7 @@ if __name__ == '__main__':
                         default=42424)
     parser.add_argument('-v', dest='verbose', action='store_true')
     args = parser.parse_args()
-    if args.verbose is True:
+    if args.verbose:
         log.setLevel(logging.DEBUG)
     log.addHandler(logging.StreamHandler())
     keyfile = os.path.expanduser(args.keyfile)

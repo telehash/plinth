@@ -2,31 +2,41 @@
 
 import os
 import time
-import logging
 import socket
 from struct import pack, unpack
 
 from tomcrypt import rsa, ecc, cipher, hash
 from tomcrypt.utils import pem_encode
+from gevent.server import DatagramServer
 
-log = logging.getLogger(__name__)
+from .log import log
+
 
 class Switch(object):
 
-    __attrs__ = [ 'priv_key', 'pub_key' ]
+    def __init__(self, hash_name=None, seeds=None):
+        self.lines = None
 
-    def __init__(self, key=None):
+        if isinstance(hash_name, (HashName)):
+            self.hash_name = hash_name
+        else:
+            self.hash_name = HashName()
 
-        if isinstance(key, (str, unicode)):
+    def start(self, listen=None):
+        if isinstance(listen, (int)):
+            log.debug('Listening for open packets on port %s' % str(listen))
+        log.debug('Just hanging out so far!')
+
+
+class HashName(object):
+
+    __attrs__ = ['key']
+
+    def __init__(self, priv_key=None):
+        if isinstance(priv_key, (str, unicode)):
             try:
-                self.priv_key = rsa.Key(key)
+                self.key = rsa.Key(priv_key)
             except:
                 raise Exception('Invalid private key!')
         else:
-            self.priv_key = rsa.Key(2048)
-
-        self.pub_key = self.priv_key.public
-
-    def run(self, port=42424):
-        log.debug(self.pub_key.as_string())
-        log.debug('Stub!')
+            self.key = rsa.Key(2048)

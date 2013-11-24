@@ -20,7 +20,8 @@ log = plinth.log
 
 def seek_rand(keyfile, seedfile):
     try:
-        id_key = open(keyfile).read()
+        with open(keyfile, 'r') as f:
+            id_key = f.read()
         app_id = plinth.HashName(id_key)
         log.debug('Read private key from %s' % keyfile)
     except Exception, err:

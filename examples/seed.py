@@ -17,7 +17,8 @@ log = plinth.log
 
 def run_seed(keyfile, port):
     try:
-        id_key = open(keyfile).read()
+        with open(keyfile, 'r') as f:
+            id_key = f.read()
         seed_id = plinth.HashName(id_key)
         log.debug('Read private key from %s' % keyfile)
     except:

@@ -3,6 +3,10 @@
 
 """
 TeleHash test script that connects to a seed and seeks a random hashname
+
+This version doesn't save a generated private key. After receiving a seek
+response, it vanishes like tears in the rain. Certain to clog up buggy
+switches with phantom hashnames that will never rejoin the mesh.
 """
 
 import os
@@ -20,19 +24,7 @@ import plinth
 log = plinth.log
 
 
-def seek_rand(keyfile, seedfile):
-    try:
-        with open(keyfile, 'r') as f:
-            app_id = f.read()
-        log.debug('Read private key from %s' % keyfile)
-    except Exception, err:
-        log.debug('Exception: %s' % err.message)
-        app_id = plinth.Switch.new_key()
-        umask = os.umask(0177)
-        with open(keyfile, 'w') as f:
-            f.write(app_id)
-        os.umask(umask)
-        log.debug('Saved new key in %s' % keyfile)
+def seek_rand_eph(seedfile):
     try:
         with open(seedfile, 'r') as f:
             seed_list = json.loads(f.read())
@@ -41,7 +33,7 @@ def seek_rand(keyfile, seedfile):
         print(msg)
         return
 
-    switch = plinth.Switch(key=app_id)
+    switch = plinth.Switch(ephemeral=True)
     random_seek = os.urandom(32).encode('hex')
     log.warn("Seeking: %s" % random_seek)
     switch.start()
@@ -49,9 +41,6 @@ def seek_rand(keyfile, seedfile):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-k', '--keyfile',
-                        help='Location of private key',
-                        default='~/.plinth/test_id')
     parser.add_argument('-s', '--seedfile',
                         help='Location of seed list',
                         default='~/.plinth/seeds.json')
@@ -60,6 +49,5 @@ if __name__ == '__main__':
     if args.verbose:
         log.setLevel(logging.DEBUG)
     log.addHandler(logging.StreamHandler())
-    keyfile = os.path.expanduser(args.keyfile)
     seedfile = os.path.expanduser(args.seedfile)
-    seek_rand(keyfile=keyfile, seedfile=seedfile)
+    seek_rand_eph(seedfile=seedfile)

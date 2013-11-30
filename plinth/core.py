@@ -2,41 +2,53 @@
 
 import os
 import time
-import socket
-from struct import pack, unpack
 
-from tomcrypt import rsa, ecc, cipher, hash
-from tomcrypt.utils import pem_encode
+from tomcrypt import rsa, hash
 from gevent.server import DatagramServer
 
 from .log import log
+from . import packet
 
 
-class Switch(object):
+class Switch(DatagramServer):
 
-    def __init__(self, hash_name=None, seeds=None):
-        self.lines = None
+    def __init__(self, listener=0, key=None, ephemeral=False):
+        super(Switch, self).__init__(listener)
+        if key is None:
+            if not ephemeral:
+                raise ValueError("No identity key specified")
+            else:
+                key = self.new_key()
+        if isinstance(key, (str, unicode)):
+            self._from_string(key)
+        if not self.key.is_private:
+            raise ValueError("Invalid private key")
+        pub_der = self.key.as_string(format='der')
+        self.hash_name = hash.new('sha256', pub_der).hexdigest()
 
-        if isinstance(hash_name, (HashName)):
-            self.hash_name = hash_name
-        else:
-            self.hash_name = HashName()
+    @staticmethod
+    def new_key(size=2048):
+        return rsa.Key(size).as_string()
 
-    def start(self, listen=None):
-        if isinstance(listen, (int)):
-            log.debug('Listening for open packets on port %s' % str(listen))
-        log.debug('Just hanging out so far!')
+    @property
+    def pub_key(self):
+        return self.key.public.as_string()
 
+    def _from_string(self, key):
+        self.key = rsa.Key(key)
 
-class HashName(object):
+    def start(self, seeds=None):
+        log.debug('My public key:\n%s' % self.pub_key)
+        log.debug('My hash name: %s' % self.hash_name)
+        log.debug('Listening for open packets on port %i' % self.address[1])
+        super(Switch, self).start()
 
-    __attrs__ = ['key']
+    def handle(self, data, address):
+        log.debug('Received %i bytes from %s' % (len(data), address[0]))
+        try:
+            wrapper, payload = packet.decode(data)
+        except packet.PacketException, err:
+            log.debug('Invalid Packet: %s' % err)
+            pass
+        log.debug(wrapper)
 
-    def __init__(self, priv_key=None):
-        if isinstance(priv_key, (str, unicode)):
-            try:
-                self.key = rsa.Key(priv_key)
-            except:
-                raise Exception('Invalid private key!')
-        else:
-            self.key = rsa.Key(2048)

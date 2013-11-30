@@ -10,33 +10,47 @@ import os.path
 import logging
 import argparse
 
+try:
+    import simplejson as json
+except ImportError:
+    import json
+
 import plinth
 
 log = plinth.log
 
 
-def run_seed(keyfile, port):
+def run_seed(keyfile, seedfile, port):
     try:
         with open(keyfile, 'r') as f:
             id_key = f.read()
-        seed_id = plinth.HashName(id_key)
         log.debug('Read private key from %s' % keyfile)
     except:
-        seed_id = plinth.HashName()
+        id_key = plinth.Switch.new_key()
         umask = os.umask(0177)
         with open(keyfile, 'w') as f:
-            f.write(seed_id.key.as_string())
+            f.write(id_key)
         os.umask(umask)
         log.debug('Saved new key in %s' % keyfile)
+    try:
+        with open(seedfile, 'r') as f:
+            seed_list = json.loads(f.read())
+    except Exception, msg:
+        log.warn('Unable to read initial seed list:')
+        log.warn(msg)
+        pass
 
-    seed = plinth.Switch(seed_id)
-    seed.start(listen=port)
+    seed = plinth.Switch(listener=port, key=id_key)
+    seed.serve_forever()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-k', '--keyfile',
                         help='Location of private key',
                         default='~/.plinth/seed_id')
+    parser.add_argument('-s', '--seedfile',
+                        help='Location of seed list',
+                        default='~/.plinth/seeds.json')
     parser.add_argument('-p', '--port', type=int,
                         help='UDP Port to listen on',
                         default=42424)
@@ -46,4 +60,5 @@ if __name__ == '__main__':
         log.setLevel(logging.DEBUG)
     log.addHandler(logging.StreamHandler())
     keyfile = os.path.expanduser(args.keyfile)
-    run_seed(keyfile=keyfile, port=args.port)
+    seedfile = os.path.expanduser(args.seedfile)
+    run_seed(keyfile=keyfile, seedfile=seedfile, port=args.port)

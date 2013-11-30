@@ -16,7 +16,7 @@ setup(
     long_description=readme,
     author='David Van Duzer',
     author_email='dvd@tennica.net',
-    url='https://github.com/dvanduzer/plinth',
+    url='https://github.com/telehash/plinth',
     license=license,
     packages=find_packages(exclude=('tests', 'docs'))
 )

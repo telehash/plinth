@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-A sample TeleHash seed that listens and introduces.
+TeleHash test script that connects to a seed and seeks a random hashname
 """
 
 import os
@@ -20,40 +20,41 @@ import plinth
 log = plinth.log
 
 
-def run_seed(keyfile, seedfile, port):
+def seek_rand(keyfile, seedfile):
     try:
         with open(keyfile, 'r') as f:
-            id_key = f.read()
+            app_id = f.read()
         log.debug('Read private key from %s' % keyfile)
-    except:
-        id_key = plinth.Switch.new_key()
+    except Exception, err:
+        log.debug('Exception: %s' % err.message)
+        app_id = plinth.Switch.new_key()
         umask = os.umask(0177)
         with open(keyfile, 'w') as f:
-            f.write(id_key)
+            f.write(app_id)
         os.umask(umask)
         log.debug('Saved new key in %s' % keyfile)
     try:
         with open(seedfile, 'r') as f:
             seed_list = json.loads(f.read())
     except Exception, msg:
-        log.warn('Unable to read initial seed list:')
-        log.warn(msg)
-        pass
+        print('Unable to read initial seed list:')
+        print(msg)
+        return
 
-    seed = plinth.Switch(listener=port, key=id_key)
-    seed.serve_forever()
+    switch = plinth.Switch(key=app_id)
+    random_seek = os.urandom(32).encode('hex')
+    log.warn("Seeking: %s" % random_seek)
+    switch.start()
+    #switch.seek(random_seek)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-k', '--keyfile',
                         help='Location of private key',
-                        default='~/.plinth/seed_id')
+                        default='~/.plinth/test_id')
     parser.add_argument('-s', '--seedfile',
                         help='Location of seed list',
                         default='~/.plinth/seeds.json')
-    parser.add_argument('-p', '--port', type=int,
-                        help='UDP Port to listen on',
-                        default=42424)
     parser.add_argument('-v', dest='verbose', action='store_true')
     args = parser.parse_args()
     if args.verbose:
@@ -61,4 +62,4 @@ if __name__ == '__main__':
     log.addHandler(logging.StreamHandler())
     keyfile = os.path.expanduser(args.keyfile)
     seedfile = os.path.expanduser(args.seedfile)
-    run_seed(keyfile=keyfile, seedfile=seedfile, port=args.port)
+    seek_rand(keyfile=keyfile, seedfile=seedfile)

@@ -2,31 +2,53 @@
 
 import os
 import time
-import logging
-import socket
-from struct import pack, unpack
 
-from tomcrypt import rsa, ecc, cipher, hash
-from tomcrypt.utils import pem_encode
+from tomcrypt import rsa, hash
+from gevent.server import DatagramServer
 
-log = logging.getLogger(__name__)
+from .log import log
+from . import packet
 
-class Switch(object):
 
-    __attrs__ = [ 'priv_key', 'pub_key' ]
+class Switch(DatagramServer):
 
-    def __init__(self, key=None):
-
+    def __init__(self, listener=0, key=None, ephemeral=False):
+        super(Switch, self).__init__(listener)
+        if key is None:
+            if not ephemeral:
+                raise ValueError("No identity key specified")
+            else:
+                key = self.new_key()
         if isinstance(key, (str, unicode)):
-            try:
-                self.priv_key = rsa.Key(key)
-            except:
-                raise Exception('Invalid private key!')
-        else:
-            self.priv_key = rsa.Key(2048)
+            self._from_string(key)
+        if not self.key.is_private:
+            raise ValueError("Invalid private key")
+        pub_der = self.key.as_string(format='der')
+        self.hash_name = hash.new('sha256', pub_der).hexdigest()
 
-        self.pub_key = self.priv_key.public
+    @staticmethod
+    def new_key(size=2048):
+        return rsa.Key(size).as_string()
 
-    def run(self, port=42424):
-        log.debug(self.pub_key.as_string())
-        log.debug('Stub!')
+    @property
+    def pub_key(self):
+        return self.key.public.as_string()
+
+    def _from_string(self, key):
+        self.key = rsa.Key(key)
+
+    def start(self, seeds=None):
+        log.debug('My public key:\n%s' % self.pub_key)
+        log.debug('My hash name: %s' % self.hash_name)
+        log.debug('Listening for open packets on port %i' % self.address[1])
+        super(Switch, self).start()
+
+    def handle(self, data, address):
+        log.debug('Received %i bytes from %s' % (len(data), address[0]))
+        try:
+            wrapper, payload = packet.decode(data)
+        except packet.PacketException, err:
+            log.debug('Invalid Packet: %s' % err)
+            pass
+        log.debug(wrapper)
+

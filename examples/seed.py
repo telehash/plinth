@@ -26,7 +26,7 @@ def run_seed(keyfile, seedfile, port):
             id_key = f.read()
         log.debug('Read private key from %s' % keyfile)
     except:
-        id_key = plinth.Switch.new_key()
+        id_key = plinth.SwitchID().priv_key
         umask = os.umask(0177)
         with open(keyfile, 'w') as f:
             f.write(id_key)
@@ -38,9 +38,10 @@ def run_seed(keyfile, seedfile, port):
     except Exception, msg:
         log.warn('Unable to read initial seed list:')
         log.warn(msg)
+        seed_list = None
         pass
 
-    seed = plinth.Switch(listener=port, key=id_key)
+    seed = plinth.Switch(listener=port, key=id_key, seeds=seed_list)
     seed.serve_forever()
 
 if __name__ == '__main__':

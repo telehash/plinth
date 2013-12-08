@@ -22,21 +22,17 @@ class PacketException(ValueError):
 """
 The length header on all Telehash packets
 ! == network order
-H == unsigned short (always 16 bits??)
+H == unsigned short
 """
 hdr = struct.Struct('!H')
 
 def decode(packet):
     """Takes a bytestring and returns a decoded 2-tuple"""
-
     packet_size = len(packet)
     if packet_size < hdr.size:
         raise PacketException('Length header larger than actual packet')
 
     wrapper_size = hdr.unpack_from(packet)[0]
-    if wrapper_size < 2:
-        raise PacketException('Telehash packets are at least 2+2 bytes')
-
     payload_size = packet_size - (hdr.size + wrapper_size)
     if payload_size < 0:
         raise PacketException('JSON wrapper truncated?')

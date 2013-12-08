@@ -3,45 +3,40 @@
 import os
 import time
 
-from tomcrypt import rsa, hash
 from gevent.server import DatagramServer
 
 from .log import log
 from . import packet
+from .dht import DHT
+from .identity import SwitchID
 
 
 class Switch(DatagramServer):
+    """An application's TeleHash Switch instance.
 
-    def __init__(self, listener=0, key=None, ephemeral=False):
+    Used to communicate securely with other applications over the TeleHash
+    mesh network.
+    """
+    def __init__(self, listener=0, key=None, ephemeral=False, seeds=None):
         super(Switch, self).__init__(listener)
         if key is None:
             if not ephemeral:
                 raise ValueError("No identity key specified")
             else:
-                key = self.new_key()
+                self.id = SwitchID()
         if isinstance(key, (str, unicode)):
-            self._from_string(key)
-        if not self.key.is_private:
-            raise ValueError("Invalid private key")
-        pub_der = self.key.as_string(format='der')
-        self.hash_name = hash.new('sha256', pub_der).hexdigest()
+            self.id = SwitchID(key=key)
+            if not self.id.is_private:
+                raise ValueError("Need private key for local identity")
+        #TODO: Need to handle key object edge cases.
+        self.dht = DHT(self.id, seeds)
 
-    @staticmethod
-    def new_key(size=2048):
-        return rsa.Key(size).as_string()
-
-    @property
-    def pub_key(self):
-        return self.key.public.as_string()
-
-    def _from_string(self, key):
-        self.key = rsa.Key(key)
-
-    def start(self, seeds=None):
-        log.debug('My public key:\n%s' % self.pub_key)
-        log.debug('My hash name: %s' % self.hash_name)
+    def start(self):
+        log.debug('My public key:\n%s' % self.id.pub_key)
+        log.debug('My hash name: %s' % self.id.hash_name)
         log.debug('Listening for open packets on port %i' % self.address[1])
         super(Switch, self).start()
+        self.dht.start()
 
     def handle(self, data, address):
         log.debug('Received %i bytes from %s' % (len(data), address[0]))

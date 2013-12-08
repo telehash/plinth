@@ -41,7 +41,7 @@ def seek_rand(keyfile, seedfile):
         print(msg)
         return
 
-    switch = plinth.Switch(key=app_id)
+    switch = plinth.Switch(key=app_id, seeds=seed_list)
     random_seek = os.urandom(32).encode('hex')
     log.warn("Seeking: %s" % random_seek)
     switch.start()

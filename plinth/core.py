@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 import time
 
+import gevent
 from gevent.server import DatagramServer
+from gevent.queue import Queue
 
 from .log import log
 from . import packet
@@ -19,6 +22,7 @@ class Switch(DatagramServer):
     """
     def __init__(self, listener=0, key=None, ephemeral=False, seeds=None):
         super(Switch, self).__init__(listener)
+        self.inq = Queue()
         if key is None:
             if not ephemeral:
                 raise ValueError("No identity key specified")
@@ -29,7 +33,7 @@ class Switch(DatagramServer):
             if not self.id.is_private:
                 raise ValueError("Need private key for local identity")
         #TODO: Need to handle key object edge cases.
-        self.dht = DHT(self.id, seeds)
+        self.dht = DHT(self.id, self.inq, self.sendto, seeds)
 
     def start(self):
         log.debug('My public key:\n%s' % self.id.pub_key)
@@ -42,8 +46,8 @@ class Switch(DatagramServer):
         log.debug('Received %i bytes from %s' % (len(data), address[0]))
         try:
             wrapper, payload = packet.decode(data)
+            self.dht.incoming((wrapper, payload))
         except packet.PacketException, err:
             log.debug('Invalid Packet: %s' % err)
-            pass
         log.debug(wrapper)
 

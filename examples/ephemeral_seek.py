@@ -33,7 +33,7 @@ def seek_rand_eph(seedfile):
         print(msg)
         return
 
-    switch = plinth.Switch(ephemeral=True)
+    switch = plinth.Switch(ephemeral=True, seeds=seed_list)
     random_seek = os.urandom(32).encode('hex')
     log.warn("Seeking: %s" % random_seek)
     switch.start()

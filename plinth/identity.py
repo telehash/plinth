@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
-from tomcrypt import rsa, hash
+from tomcrypt import rsa
+from tomcrypt.hash import sha256
 
 
 class SwitchID(object):
@@ -21,7 +22,7 @@ class SwitchID(object):
                 self.key = rsa.Key(2048)
             self._hash = self._hash_from_key(self.key)
         else:
-            _validate_hash_name(hash_name)
+            self._validate_hash_name(hash_name)
             self._hash = self._hash_from_string(hash_name)
 
     @staticmethod
@@ -37,7 +38,8 @@ class SwitchID(object):
     @staticmethod
     def _hash_from_key(key):
         pub_der = key.public.as_string(format='der')
-        hex_string = hash.sha256(pub_der).hexdigest()
+        hex_string = sha256(pub_der).hexdigest()
+        #TODO: Apparently this is what @classmethod is for?
         return SwitchID._hash_from_string(hex_string)
 
     @staticmethod
@@ -67,7 +69,7 @@ class SwitchID(object):
         internal integer storage. Clearly the refactor was astute.
         """
 
-        return (a ^ b).bit_length()
+        return 256 - (a ^ b).bit_length()
 
     def kdist(self, other):
         return _kdist(self._hash, other._hash)
@@ -91,6 +93,13 @@ class SwitchID(object):
             return None
         else:
             return self.key.public.as_string()
+
+    @property
+    def pub_key_der(self):
+        if self.key is None:
+            return None
+        else:
+            return self.key.public.as_string(format='der')
 
     @property
     def is_private(self):
@@ -119,3 +128,17 @@ class SwitchID(object):
             key, we'll probably end up here. Just ignore that?
             """
             return False
+
+    def encrypt(self, payload):
+        return self.key.encrypt(payload).encode('base64')
+            #.encode('base64').translate(None, '\n')
+
+    def decrypt(self, payload):
+        self.key.decrypt(payload.decode('base64'), padding='oaep')
+
+    def sign(self, payload):
+        return self.key.sign(payload, padding='v1.5', hash='sha256')
+
+    def verify(self, payload, sig):
+        return self.key.verify(payload, sig, padding='v1.5', hash='sha256')
+

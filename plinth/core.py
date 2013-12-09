@@ -46,8 +46,6 @@ class Switch(DatagramServer):
         log.debug('Received %i bytes from %s' % (len(data), address[0]))
         try:
             wrapper, payload = packet.decode(data)
-            self.dht.incoming((wrapper, payload))
+            self.dht.incoming(wrapper, payload, address)
         except packet.PacketException, err:
             log.debug('Invalid Packet: %s' % err)
-        log.debug(wrapper)
-

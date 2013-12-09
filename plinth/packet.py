@@ -14,6 +14,7 @@ try:
 except ImportError:
     import json
 
+
 # Maybe make this global...
 class PacketException(ValueError):
     """There was an error encoding or decoding your packet."""
@@ -25,6 +26,7 @@ The length header on all Telehash packets
 H == unsigned short
 """
 hdr = struct.Struct('!H')
+
 
 def decode(packet):
     """Takes a bytestring and returns a decoded 2-tuple"""
@@ -42,6 +44,7 @@ def decode(packet):
     wrapper = json.loads(wrapper_json)
     payload = packet[packet_size-payload_size:]
     return wrapper, payload
+
 
 def encode(wrapper, payload=''):
     """Returns a bytestring suitable for transmission over the wire"""

@@ -10,9 +10,17 @@ from .log import log
 
 
 class Channel(object):
-    def __init__(self):
-        self.c = os.urandom(16)
+    def __init__(self, c=None, data=None, body=None):
+        self.c = c
+        if self.c is None:
+            self.c = os.urandom(16)
+        if data is not None:
+            self.incoming(data, body)
 
+    def incoming(self, data, body):
+        data.pop('c', None)
+        log.debug('Received on Channel: %s' % self.c)
+        log.debug(data)
 
 """
 class DurableChannel(Channel):

@@ -56,7 +56,7 @@ class SwitchID(object):
         """Returns the Kademlia distance from another SwitchID
 
         Most of the literature phrases this poorly, but the metric (or
-        possibly pseudometric, depending on whether you want to speak 
+        possibly pseudometric, depending on whether you want to speak
         with topologists) we care about is something closer to "greatest
         common subnet mask" for the network engineers.
 
@@ -130,15 +130,13 @@ class SwitchID(object):
             return False
 
     def encrypt(self, payload):
-        return self.key.encrypt(payload).encode('base64')
-            #.encode('base64').translate(None, '\n')
+        return self.key.encrypt(payload).encode('base64').translate(None, '\n')
 
     def decrypt(self, payload):
-        self.key.decrypt(payload.decode('base64'), padding='oaep')
+        return self.key.decrypt(payload.decode('base64'))
 
     def sign(self, payload):
         return self.key.sign(payload, padding='v1.5', hash='sha256')
 
     def verify(self, payload, sig):
         return self.key.verify(payload, sig, padding='v1.5', hash='sha256')
-

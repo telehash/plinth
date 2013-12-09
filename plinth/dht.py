@@ -10,6 +10,8 @@ from tomcrypt.cipher import aes
 from . import packet
 from .log import log
 from .identity import SwitchID
+from .channels import Channel
+
 
 class DHT(object):
     """Manages information about remote Switches and Lines"""
@@ -27,45 +29,51 @@ class DHT(object):
             remote = SwitchID(hash_name=seed['hashname'],
                               key=seed['pubkey'])
             hn = remote.hash_name
-            addr = (seed['ip'], seed['port'])
+            address = (seed['ip'], seed['port'])
             #block until ready or abort?
-            line = Line(self.local, self.sendto, addr, remote)
+            line = Line(self.local, self.sendto, address, remote)
             self.lines[line.id] = line
             self.known_hashes[hn] = line.id
 
-    def incoming(self, (wrapper, payload)):
+    def incoming(self, wrapper, payload, address):
         """Hands off incoming packets to appropriate Lines"""
-        t, iv = wrapper['type'], wrapper['iv']
+        t, iv = wrapper['type'], wrapper['iv'].decode('hex')
         if t == 'line':
             l = wrapper['line']
             if l in self.lines:
                 self.lines[l].recv(iv, payload)
         elif t == 'open':
-            log.debug(wrapper)
-            o = wrapper['open']
-            log.debug("open b64 len: %s\nopen raw len: %s" % (len(o), len(o.decode('base64'))))
-            ecc_key = self.local.decrypt(wrapper['open'])
-            log.debug("DEB: %s" % ecc_key)
-            aes_key = sha256(ecc_key)
+            remote_ecc_key = self.local.decrypt(wrapper['open'])
+            aes_key = sha256(remote_ecc_key)
             body = aes(aes_key.digest(), iv).decrypt(payload)
             inner, remote_rsa = packet.decode(body)
-            remote = SwitchID(remote_rsa)
+            remote = SwitchID(key=remote_rsa)
             hn = remote.hash_name
-            log.debug('Got an open from %s' % hn)
+            log.debug('Received open from %s' % hn)
             remote_line = inner['line'].decode('hex')
             aes_key.update(remote_line)
             candidate_line = self.known_hashes.get(hn, None)
-            if candidate_line is not None:
-                pass #We're waiting on this open...
-            else:
-                pass #Create a new line
             encrypted_sig = wrapper['sig'].decode('base64')
+            sig = aes(aes_key.digest(), iv).decrypt(encrypted_sig)
+            secrets = (remote_line, remote_ecc_key)
+            if not remote.verify(sha256(payload).digest(), sig):
+                log.debug('Invalid signature from: %s' % hn)
+                return
+            if candidate_line is not None:
+                log.debug('Open for existing Line: %s' % candidate_line)
+                line = self.lines[candidate_line]
+                if line.secret is None:
+                    line.ecdh(secrets)
+            else:
+                line = Line(self.local, self.sendto, address, remote, secrets)
+                self.lines[line.id] = line
+                self.known_hashes[hn] = line.id
         else:
-            pass #Fwomp
-        
+            pass  # Fwomp
+
 
 class Line(object):
-    def __init__(self, local, sendto, addr, remote=None):
+    def __init__(self, local, sendto, addr, remote, secrets=None):
         """Create a bi-directional connection to a remote Switch.
 
         Probably not a fantastic idea to be doing so much in __init__
@@ -73,17 +81,13 @@ class Line(object):
         """
         self._id = os.urandom(16)
         self._rid = None
+        self._ecc_key = None
         self.secret = None
         #TODO: multi-homing
         self.remote_iface = addr
         self.sendto = sendto
-        if remote is None:
-            #Insert _recv_open() when remote node is initiator.
-            pass
-        else:
-            open_pkt = self._open(local, remote)
-            self._send(open_pkt)
-            #wait for response?
+        self.channels = {}
+        self._open(local, remote, secrets)
 
     @property
     def id(self):
@@ -93,31 +97,55 @@ class Line(object):
     def rid(self):
         return self._rid.encode('hex')
 
+    @property
+    def aes_dec(self):
+        return sha256(self.secret + self._rid + self._id).digest()
+
+    @property
+    def aes_enc(self):
+        return sha256(self.secret + self._id + self._rid).digest()
+
     #Consider moving this out of Line altogether?
-    def _open(self, local, remote=None, incoming=None):
+    def _open(self, local, remote, secrets=None):
         inner = {
-            'to'   : remote.hash_name,
-            'at'   : int(time.time() * 1000),
-            'line' : self.id.encode('hex')
+            'to':   remote.hash_name,
+            'at':   int(time.time() * 1000),
+            'line': self.id
         }
-        pkt = packet.encode(inner, local.pub_key_der)
-        temp_key = ecc.Key(256)
-        #body = 
-        return None
-    
-    def _send(self, body):
-        pkt = {}
+        body = packet.encode(inner, local.pub_key_der)
+        self._ecc_key = ecc.Key(256)
+        ecc_key_pub = self._ecc_key.public.as_string(format='der', ansi=True)
+        aes_key = sha256(ecc_key_pub)
         iv = os.urandom(16)
-        pkt['iv'] = iv.encode('hex')
-        if body == 'open':
-            pkt['type'] = 'open'
-            # encrypt with temp key
-            # sign it
-            # add signature to json
-        else:
-            # encrypt with line key
-            pass
-        self.sendto(packet.encode(pkt), self.remote_iface)
+        encrypted_body = aes(aes_key.digest(), iv).encrypt(body)
+        sig = local.sign(sha256(encrypted_body).digest())
+        aes_key.update(self._id)
+        encrypted_sig = aes(aes_key.digest(), iv).encrypt(sig)
+        outer = {
+            'type': 'open',
+            'open': remote.encrypt(ecc_key_pub),
+            'iv':   iv.encode('hex'),
+            'sig':  encrypted_sig.encode('base64').translate(None, '\n')
+        }
+        log.debug('Sending open to: %s' % remote.hash_name)
+        if secrets is not None:
+            self.ecdh(secrets)
+        self.sendto(packet.encode(outer, encrypted_body), self.remote_iface)
+
+    def ecdh(self, (remote_line, remote_ecc_key)):
+        self._rid = remote_line
+        self.secret = self._ecc_key.shared_secret(ecc.Key(remote_ecc_key))
+        log.debug('ECDH: %s' % self.secret.encode('hex'))
+        #Throw it away!
+        del self._ecc_key
 
     def recv(self, iv, pkt):
-        log.debug("Received: %s" % iv)
+        data, body = packet.decode(aes(self.aes_dec, iv).decrypt(pkt))
+        c = data['c']
+        t = data.get('type', None)
+        candidate_channel = self.channels.get(c, None)
+        if candidate_channel is not None:
+            candidate_channel.incoming(data, body)
+        if t is not None:
+            channel = Channel(c, data, body)
+            self.channels[c] = channel

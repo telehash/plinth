@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-from bitarray import bitarray, bitdiff
 import os
 import time
 from tomcrypt import ecc

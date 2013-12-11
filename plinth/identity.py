@@ -135,7 +135,10 @@ class SwitchID(object):
         return self.key.encrypt(payload).encode('base64').translate(None, '\n')
 
     def decrypt(self, payload):
-        return self.key.decrypt(payload.decode('base64'))
+        try:
+            return self.key.decrypt(payload.decode('base64'))
+        except Exception, err:
+            raise Exception("Probably not our hashname: %s" % err)
 
     def sign(self, payload):
         return self.key.sign(payload, padding='v1.5', hash='sha256')

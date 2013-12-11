@@ -19,12 +19,10 @@ class Channel(object):
             self.recv(data, body)
 
     def recv(self, data, body):
-        log.debug('Received on Channel: %s' % self.c)
-        log.debug(data)
+        log.debug("Channel %s recv: %s" % (self.c, data['type']))
 
     def send(self, data):
         data['c'] = self.c
-        log.debug("sending: %s" % data)
         self.line.send(data)
 
 """

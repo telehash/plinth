@@ -41,7 +41,10 @@ def decode(packet):
 
     # Maybe this notation makes more sense when one uses shorter names.
     wrapper_json = packet[hdr.size:hdr.size+wrapper_size]
-    wrapper = json.loads(wrapper_json)
+    if len(wrapper_json) == 0:
+        wrapper = None
+    else:
+        wrapper = json.loads(wrapper_json)
     payload = packet[packet_size-payload_size:]
     return wrapper, payload
 

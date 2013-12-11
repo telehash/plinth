@@ -20,7 +20,7 @@ class DHT(object):
         self.sendto = sendto
         self.seeds = seeds
         self.inq = inq
-        self.kbuckets = {}
+        self.kbucket = []
         self.known_hashes = {}
         self.lines = {}
 
@@ -31,17 +31,19 @@ class DHT(object):
             hn = remote.hash_name
             address = (seed['ip'], seed['port'])
             #block until ready or abort?
-            line = Line(self.local, self.sendto, address, remote)
+            line = Line(self, address, remote)
             self.lines[line.id] = line
-            self.known_hashes[hn] = line.id
+            self.known_hashes[hn] = (line.id, address, remote)
+        self.maintain()
 
-    def incoming(self, wrapper, payload, address):
+    def recv(self, wrapper, payload, address):
         """Hands off incoming packets to appropriate Lines"""
         t, iv = wrapper['type'], wrapper['iv'].decode('hex')
         if t == 'line':
             l = wrapper['line']
             if l in self.lines:
-                self.lines[l].recv(iv, payload)
+                #Passing self in for seeks... Feels icky this way.
+                self.lines[l].recv(iv, payload, self)
         elif t == 'open':
             remote_ecc_key = self.local.decrypt(wrapper['open'])
             aes_key = sha256(remote_ecc_key)
@@ -52,7 +54,7 @@ class DHT(object):
             log.debug('Received open from %s' % hn)
             remote_line = inner['line'].decode('hex')
             aes_key.update(remote_line)
-            candidate_line = self.known_hashes.get(hn, None)
+            candidate_line, __ , __ = self.known_hashes.get(hn, (None,None,None))
             encrypted_sig = wrapper['sig'].decode('base64')
             sig = aes(aes_key.digest(), iv).decrypt(encrypted_sig)
             secrets = (remote_line, remote_ecc_key)
@@ -65,29 +67,42 @@ class DHT(object):
                 if line.secret is None:
                     line.ecdh(secrets)
             else:
-                line = Line(self.local, self.sendto, address, remote, secrets)
+                line = Line(self, address, remote, secrets)
                 self.lines[line.id] = line
-                self.known_hashes[hn] = line.id
+                self.known_hashes[hn] = (line.id, address, remote)
         else:
             pass  # Fwomp
 
+    def maintain(self):
+        pass
+
+    def seek(self, switch):
+        see_list = []
+        hn = switch.hash_name
+        bkt = self.local.kdist(switch)
+        log.debug("%s in bucket: %s" % (hn, bkt))
+        if hn in self.known_hashes:
+            ip, port = self.known_hashes[hn][1]
+            see = ','.join((hn,ip,str(port)))
+            see_list.append(see)
+        return see_list
 
 class Line(object):
-    def __init__(self, local, sendto, addr, remote, secrets=None):
+    def __init__(self, dht, addr, remote, secrets=None):
         """Create a bi-directional connection to a remote Switch.
 
         Probably not a fantastic idea to be doing so much in __init__
         but we'll figure that out later.
         """
+        self.dht = dht
         self._id = os.urandom(16)
         self._rid = None
         self._ecc_key = None
         self.secret = None
         #TODO: multi-homing
         self.remote_iface = addr
-        self.sendto = sendto
         self.channels = {}
-        self._open(local, remote, secrets)
+        self._open(remote, secrets)
 
     @property
     def id(self):
@@ -106,19 +121,19 @@ class Line(object):
         return sha256(self.secret + self._id + self._rid).digest()
 
     #Consider moving this out of Line altogether?
-    def _open(self, local, remote, secrets=None):
+    def _open(self, remote, secrets=None):
         inner = {
             'to':   remote.hash_name,
             'at':   int(time.time() * 1000),
             'line': self.id
         }
-        body = packet.encode(inner, local.pub_key_der)
+        body = packet.encode(inner, self.dht.local.pub_key_der)
         self._ecc_key = ecc.Key(256)
         ecc_key_pub = self._ecc_key.public.as_string(format='der', ansi=True)
         aes_key = sha256(ecc_key_pub)
         iv = os.urandom(16)
         encrypted_body = aes(aes_key.digest(), iv).encrypt(body)
-        sig = local.sign(sha256(encrypted_body).digest())
+        sig = self.dht.local.sign(sha256(encrypted_body).digest())
         aes_key.update(self._id)
         encrypted_sig = aes(aes_key.digest(), iv).encrypt(sig)
         outer = {
@@ -130,7 +145,11 @@ class Line(object):
         log.debug('Sending open to: %s' % remote.hash_name)
         if secrets is not None:
             self.ecdh(secrets)
-        self.sendto(packet.encode(outer, encrypted_body), self.remote_iface)
+        self.dht.sendto(packet.encode(outer, encrypted_body), self.remote_iface)
+
+    def _seek(self, hn):
+        switch = SwitchID(hash_name=hn)
+        return self.dht.seek(switch)
 
     def ecdh(self, (remote_line, remote_ecc_key)):
         self._rid = remote_line
@@ -139,13 +158,35 @@ class Line(object):
         #Throw it away!
         del self._ecc_key
 
-    def recv(self, iv, pkt):
+    def recv(self, iv, pkt, dht):
         data, body = packet.decode(aes(self.aes_dec, iv).decrypt(pkt))
         c = data['c']
         t = data.get('type', None)
         candidate_channel = self.channels.get(c, None)
         if candidate_channel is not None:
-            candidate_channel.incoming(data, body)
-        if t is not None:
-            channel = Channel(c, data, body)
+            candidate_channel.recv(data, body)
+        elif t == 'seek':
+            channel = Channel(self, c, data, body)
+            hn = data['seek']
+            response = {
+                'type': 'see',
+                'see':  self._seek(hn),
+                'end':  True
+            }
+            channel.send(response)
+        elif t is not None:
+            channel = Channel(self, c, data, body)
             self.channels[c] = channel
+        #Fwomp
+
+    def send(self, data):
+        iv = os.urandom(16)
+        log.debug(data)
+        pkt = packet.encode(data, '')
+        body = aes(self.aes_enc, iv).encrypt(pkt)
+        wrapper = {
+            'type': 'line',
+            'line': self.rid,
+            'iv':   iv.encode('hex')
+        }
+        self.dht.sendto(packet.encode(wrapper, body), self.remote_iface)

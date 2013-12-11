@@ -3,6 +3,8 @@
 from tomcrypt import rsa
 from tomcrypt.hash import sha256
 
+from .log import log
+
 
 class SwitchID(object):
     """Container for key & hashname of local or remote Switch
@@ -72,7 +74,7 @@ class SwitchID(object):
         return 256 - (a ^ b).bit_length()
 
     def kdist(self, other):
-        return _kdist(self._hash, other._hash)
+        return self._kdist(self._hash, other._hash)
 
     @property
     def known(self):

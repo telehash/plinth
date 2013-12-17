@@ -2,20 +2,18 @@
 
 import os
 import time
-from tomcrypt import ecc
 from tomcrypt.hash import sha256
 from tomcrypt.cipher import aes
 
 from .packet import Packet
 from .log import log
-from .channels import Channel
 
 
 class Line(object):
     def __init__(self):
         """A bidirectional encryption tunnel between two switches"""
         self._id = os.urandom(16)
-        self._rid = None
+        self._rid = '\0'
         self.secret = None
 
     @property
@@ -47,36 +45,12 @@ class Line(object):
 
     def recv(self, iv, pkt):
         data, body = Packet.decode(aes(self.aes_dec, iv).decrypt(pkt))
-        c = data['c']
-        t = data.get('type', None)
-        log.debug("Channel %s recv: %s" % (c, t))
-        """
-        candidate_channel = self.channels.get(c, None)
-        if candidate_channel is not None:
-            candidate_channel.recv(data, body)
-        elif t == 'seek':
-            channel = Channel(self, c, data, body)
-            hn = data['seek']
-            response = {
-                'type': 'see',
-                'see':  self._seek(hn),
-                'end':  True
-            }
-            channel.send(response)
-        elif t is not None:
-            channel = Channel(self, c, data, body)
-            self.channels[c] = channel
-        #Fwomp
-        """
+        return data, body
 
-    def send(self, data):
+    def send(self, data, body=''):
         iv = os.urandom(16)
+        log.debug('Sending on Line %s:' % self.id)
         log.debug(data)
-        pkt = Packet.encode(data, '')
-        body = aes(self.aes_enc, iv).encrypt(pkt)
-        wrapper = {
-            'type': 'line',
-            'line': self.rid,
-            'iv':   iv.encode('hex')
-        }
-        #self.dht.sendto(packet.encode(wrapper, body), self.remote_iface)
+        payload = Packet.encode(data, body)
+        enc_payload = aes(self.aes_enc, iv).encrypt(payload)
+        return Packet.wrap_line(self.rid, iv, enc_payload)

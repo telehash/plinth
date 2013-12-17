@@ -94,7 +94,16 @@ class Packet(object):
             'type': 'open',
             'open': o,
             'iv':   iv.encode('hex'),
-            'sig': sig.encode('base64').translate(None, '\n')
+            'sig':  sig.encode('base64').translate(None, '\n')
+        }
+        return cls.encode(outer, body)
+
+    @classmethod
+    def wrap_line(cls, l, iv, body):
+        outer = {
+            'type': 'line',
+            'line': l,
+            'iv':   iv.encode('hex')
         }
         return cls.encode(outer, body)
 

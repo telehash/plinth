@@ -37,7 +37,7 @@ def seek_rand_eph(seedfile):
     random_seek = os.urandom(32).encode('hex')
     log.warn("Seeking: %s" % random_seek)
     switch.start()
-    #switch.seek(random_seek)
+    switch.ping(random_seek)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

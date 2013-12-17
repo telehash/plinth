@@ -9,6 +9,7 @@ import os
 import os.path
 import logging
 import argparse
+import time
 
 try:
     import simplejson as json
@@ -45,7 +46,12 @@ def seek_rand(keyfile, seedfile):
     random_seek = os.urandom(32).encode('hex')
     log.warn("Seeking: %s" % random_seek)
     switch.start()
-    #switch.seek(random_seek)
+    switch.ping(random_seek)
+    for x in range(10):
+        time.sleep(1)
+        random_seek = os.urandom(32).encode('hex')
+        log.warn("Seeking: %s" % random_seek)
+        switch.ping(random_seek)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

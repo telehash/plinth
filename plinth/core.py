@@ -9,10 +9,10 @@ from tomcrypt.hash import sha256
 from tomcrypt.cipher import aes
 
 from .log import log
-from .packet import Packet
-from .dht import DHT
 from .identity import SwitchID
+from .packet import Packet
 from .line import Line
+from .channel import Channel
 
 
 class Switch(DatagramServer):
@@ -49,13 +49,13 @@ class Switch(DatagramServer):
             remote = RemoteSwitch(self, seed_id)
             self.active[seed_id.hash_name] = remote
             address = (seed['ip'], seed['port'])
-            log.debug('connecting to seed at %s' % str(address))
             remote.new_line(address)
+            self.ping(seed_id.hash_name)
 
     def handle(self, data, address):
         log.debug('Received %i bytes from %s' % (len(data), address[0]))
-        if len(data) == 4:
-            #Empty ping packets can be ignored
+        if len(data) <= 4:
+            #Empty / NAT-punching packets can be ignored
             return
         try:
             p = Packet(data)
@@ -64,22 +64,36 @@ class Switch(DatagramServer):
                 sender = p.read_open(self.id.hash_name, sender_ecc)
                 remote = self.active.get(sender.hash_name)
                 if remote is None:
-                    #This is *our view* of the remote switch
+                    """
+                    This is *our view* of the remote switch, but it still
+                    needs to be rethought.  The RemoteSwitch() object
+                    to be able to sign & decrypt opens, and update the
+                    local Switch instance with Line status changes.
+                    Some of this can probably be refactored to use some
+                    of gevent's specialized structures.
+                    """
                     remote = RemoteSwitch(self, sender)
                     self.active[sender.hash_name] = remote
                 remote.handle_open(p, address)
             elif p.line in self.lines:
                 #TODO: turn this into a queue
+                #TODO: also rename it, because it's the remote switch
+                #TODO: container rather than the direct line object
                 self.lines[p.line].recv(p, address)
             #Packet dropped otherwise
         except Exception, err:
             log.debug('Invalid Packet: %s' % err)
 
-    def open_channel(self, remote, ctype):
-        ch = Channel(remote, ctype)
+    def open_channel(self, hash_name, ctype, initial_data=None):
+        remote = self.active.get(hash_name)
+        if remote is None:
+            switch_id = SwitchID(hash_name=hash_name)
+            remote = RemoteSwitch(self, switch_id)
+            self.active[hash_name] = remote
+        return remote.open_channel(ctype, initial_data)
 
-    def ping(self, remote):
-        return self.open_channel(remote, 'ping')
+    def ping(self, hash_name):
+        return self.open_channel(hash_name, 'seek', self.id.hash_name)
 
 
 class RemoteSwitch(object):
@@ -98,48 +112,96 @@ class RemoteSwitch(object):
         self.line.complete(remote_line, secret)
 
     def new_line(self, address):
+        """Creates or replaces a secure line to the remote switch
+
+        TODO: Look into gevent.event to detect response opens
+        """
         self.address = address
         if self.line:
+            log.debug('Invalidating previous line: %s' % self.line.id)
+            #unregister Line from Switch
             del self.local.lines[self.line.id]
+            del self.line
         self.line = Line()
         self.local.lines[self.line.id] = self
         self._ecc = ecc.Key(256)
-        self._ecc_pub = self. \
-            _ecc.public.as_string(format='der', ansi=True)
+        self._ecc_pub = self._ecc.public \
+                            .as_string(format='der', ansi=True)
         self._open = Packet.create_open(
             self.id.hash_name,
             self.line.id,
             self.local.id.pub_key_der)
-        #TODO: add retransmit when initiating (but where?)
         self._send_open()
+        retried = 0
+        while not self.line.is_complete and retried < 2:
+            gevent.sleep(1)
+            self._send_open()
+            retried += 1
+            log.debug('open retry %i' % retried)
 
-    def send(self, data):
+    def send(self, data, timeout=5):
+        """Take a Channel packet, wrap it in a line, and send
+
+        TODO: implement timeout to wait for line
+        """
+        if not self.line:
+            log.debug('Time to implement seek already.')
+            return
+        if self.line.is_complete:
+            self._send(self.line.send(data))
+        else:
+            gevent.sleep(1)
+            if self.line.is_complete:
+                self._send(self.line.send(data))
+            else:
+                log.debug('Brutally dropping packets until line is up.')
+
+    def _send(self, data):
         """Transmit packet on best network path
 
         TODO: Implement multi-homing
         """
+        log.debug('Sending %s to %s' % (len(data), self.address))
         self.local.sendto(data, self.address)
 
     def recv(self, p, address):
-        self.line.recv(p.iv, p.payload)
+        data, body = self.line.recv(p.iv, p.payload)
+        c = data.get('c')
+        if c is None:
+            #ideally push this kind of validation into the Packet class
+            return
+        candidate = self.channels.get(c)
+        if candidate is None:
+            t = data.get('type')
+            if t is None:
+                return
+            ch = Channel(self.send, c, t)
+            self.channels[c] = ch
+            candidate = ch
+        log.debug(candidate.c)
+        candidate.recv(data, body)
 
     def _send_open(self):
-        aes_key = sha256(self._ecc_pub)
         iv = os.urandom(16)
+        aes_key = sha256(self._ecc_pub)
         enc_body = aes(aes_key.digest(), iv).encrypt(self._open)
-        sig = self.local.id.sign(sha256(enc_body).digest())
         aes_key.update(self.line.id.decode('hex'))
+        sig = self.local.id.sign(sha256(enc_body).digest())
         enc_sig = aes(aes_key.digest(), iv).encrypt(sig)
         o = self.id.encrypt(self._ecc_pub)
-        outbound = Packet.wrap_open(o, iv, enc_sig, enc_body)
-        log.debug('Sending open to: %s' % self.id.hash_name)
-        self.send(outbound)
+        data = Packet.wrap_open(o, iv, enc_sig, enc_body)
+        self._send(data)
+        log.debug('Open to: %s' % self.id.hash_name)
+        log.debug('Line: %s to %s' % (self.line.id, self.line.rid))
 
     def handle_open(self, p, address):
         """Deal with incoming open from this remote switch
 
         TODO: probably need to add a lock here
         """
+        log.debug('Open from: %s' % self.id.hash_name)
+        log.debug('Line: %s from %s' % (self.line.id, self.line.rid))
+        log.debug('At: %i' % (p.at))
         if self.line and self.line_time == 0:
             #we've been waiting for our first open
             self.line_time = p.at
@@ -150,3 +212,8 @@ class RemoteSwitch(object):
             self._send_open()
         else:
             self._ecdh(p.line, p.ecc)
+
+    def open_channel(self, ctype, initial_data):
+        ch = Channel(self.send, None, ctype)
+        self.channels[ch.c] = ch
+        ch.send(initial_data)

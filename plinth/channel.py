@@ -18,6 +18,8 @@ class Channel(object):
             self.c = os.urandom(16).encode('hex')
 
     def recv(self, data, body):
+        if self.t == 'seek':
+            log.debug('Is this a seek or a seek response? Who knows!')
         log.debug("Channel %s recv:\n%s" % (self.c, data))
 
     def send(self, data):

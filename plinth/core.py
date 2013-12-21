@@ -108,6 +108,7 @@ class RemoteSwitch(object):
     def _ecdh(self, remote_line, remote_ecc):
         secret = self._ecc.shared_secret(ecc.Key(remote_ecc))
         log.debug('ECDH: %s' % secret.encode('hex'))
+        #safe to remove this; keep _ecc_pub for open retransmits
         del self._ecc
         self.line.complete(remote_line, secret)
 
@@ -124,6 +125,14 @@ class RemoteSwitch(object):
             del self.line
         self.line = Line()
         self.local.lines[self.line.id] = self
+        """
+        In order to separate the concerns, you have to mix them up first,
+        right? The "at" timestamp in an "open" packet signifies the time
+        that the local ECC key was generated. That local ECC key only
+        needs to be kept around if we haven't received a remote "open"
+        packet. I'll try to make this connection clearer in the next
+        big refactor.
+        """
         self._ecc = ecc.Key(256)
         self._ecc_pub = self._ecc.public \
                             .as_string(format='der', ansi=True)
@@ -178,7 +187,6 @@ class RemoteSwitch(object):
             ch = Channel(self.send, c, t)
             self.channels[c] = ch
             candidate = ch
-        log.debug(candidate.c)
         candidate.recv(data, body)
 
     def _send_open(self):

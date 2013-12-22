@@ -23,7 +23,7 @@ class Switch(DatagramServer):
     """
     def __init__(self, listener=0, key=None, ephemeral=False, seeds=None):
         super(Switch, self).__init__(listener)
-        self.active = {}
+        self.switches = {}
         self.lines = {}
         if key is None:
             if not ephemeral:
@@ -47,7 +47,7 @@ class Switch(DatagramServer):
             seed_id = SwitchID(hash_name=seed['hashname'],
                                key=seed['pubkey'])
             remote = RemoteSwitch(self, seed_id)
-            self.active[seed_id.hash_name] = remote
+            self.switches[seed_id.hash_name] = remote
             address = (seed['ip'], seed['port'])
             remote.new_line(address)
             self.ping(seed_id.hash_name)
@@ -62,7 +62,7 @@ class Switch(DatagramServer):
             if p.open:
                 sender_ecc = self.id.decrypt(p.open)
                 sender = p.read_open(self.id.hash_name, sender_ecc)
-                remote = self.active.get(sender.hash_name)
+                remote = self.switches.get(sender.hash_name)
                 if remote is None:
                     """
                     This is *our view* of the remote switch, but it still
@@ -73,7 +73,7 @@ class Switch(DatagramServer):
                     of gevent's specialized structures.
                     """
                     remote = RemoteSwitch(self, sender)
-                    self.active[sender.hash_name] = remote
+                    self.switches[sender.hash_name] = remote
                 remote.handle_open(p, address)
             elif p.line in self.lines:
                 #TODO: turn this into a queue
@@ -85,11 +85,11 @@ class Switch(DatagramServer):
             log.debug('Invalid Packet: %s' % err)
 
     def open_channel(self, hash_name, ctype, initial_data=None):
-        remote = self.active.get(hash_name)
+        remote = self.switches.get(hash_name)
         if remote is None:
             switch_id = SwitchID(hash_name=hash_name)
             remote = RemoteSwitch(self, switch_id)
-            self.active[hash_name] = remote
+            self.switches[hash_name] = remote
         return remote.open_channel(ctype, initial_data)
 
     def ping(self, hash_name):

@@ -183,7 +183,7 @@ class RemoteSwitch(object):
         candidate = self.channels.get(c)
         if candidate is None:
             t = data.get('type')
-            if not isinstance(t, (str, unicode))
+            if not isinstance(t, (str, unicode)):
                 return
             ch = Channel.incoming(self.send, c, t, data, body)
             self.channels[c] = ch

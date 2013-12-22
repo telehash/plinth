@@ -16,17 +16,12 @@ class Channel(object):
         self.t = t
         if self.c is None:
             self.c = os.urandom(16).encode('hex')
+            self._outbound = True
 
     def recv(self, data, body):
-        if self.t == 'seek':
-            log.debug('Is this a seek or a seek response? Who knows!')
         log.debug("Channel %s recv:\n%s" % (self.c, data))
 
     def send(self, data):
-        """Janky logic goes here for a little bit"""
-        pkt = {
-            'type': self.t
-        }
         if self.t == 'seek':
             pkt['seek'] = data
         self._send(pkt)
@@ -35,10 +30,24 @@ class Channel(object):
         data['c'] = self.c
         self.transmit(data)
 
-"""
+@classmethod
+def incoming(cls, send_func, c, t, data, body):
+    if t[0] != '_':
+        flavor = ProtocolChannel
+    elif 'seq' in data.keys():
+        flavor = DurableChannel
+    else:
+        flavor = Channel
+    ch = flavor(send_func, c, t)
+    ch.recv(data, body)
+    return ch
+
 class DurableChannel(Channel):
-    def __init__(self):
-        super(DurableChannel, self).__init__(self)
-        self.inq = Queue()
-        self.outq = Queue()
-"""
+    pass
+
+class ProtocolChannel(Channel):
+    def __init__(self, *args, **kwargs):
+        if t not in ('seek', 'peer', 'connect'):
+            raise Exception('Unknown protocol channel type: %s' % t)
+        super(ProtocolChannel, self).__init__(self, *args, **kwargs)
+        pass

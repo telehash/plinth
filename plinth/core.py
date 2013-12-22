@@ -142,11 +142,12 @@ class RemoteSwitch(object):
             self.local.id.pub_key_der)
         self._send_open()
         retried = 0
+        gevent.sleep(1)
         while not self.line.is_complete and retried < 2:
-            gevent.sleep(1)
             self._send_open()
             retried += 1
             log.debug('open retry %i' % retried)
+            gevent.sleep(1)
 
     def send(self, data, timeout=5):
         """Take a Channel packet, wrap it in a line, and send
@@ -182,12 +183,12 @@ class RemoteSwitch(object):
         candidate = self.channels.get(c)
         if candidate is None:
             t = data.get('type')
-            if t is None:
+            if not isinstance(t, (str, unicode))
                 return
-            ch = Channel(self.send, c, t)
+            ch = Channel.incoming(self.send, c, t, data, body)
             self.channels[c] = ch
-            candidate = ch
-        candidate.recv(data, body)
+        else:
+            candidate.recv(data, body)
 
     def _send_open(self):
         iv = os.urandom(16)

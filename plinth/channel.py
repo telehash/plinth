@@ -32,12 +32,12 @@ class Channel(object):
         self.handle_unknown(data, body)
 
     def init(self, data):
-        custom = {'_' : data}
+        custom = {'_': data}
         self._send(custom)
         #insert "wait for acceptance of channel" behavior
 
     def send(self, data):
-        custom = {'_' : data}
+        custom = {'_': data}
         self._send(custom)
 
     def _send(self, data):
@@ -74,6 +74,7 @@ class Channel(object):
         err = '%s currently unimplemented' % self.t
         resp = {'end': True, 'err': err}
         self._send(resp)
+
 
 class DurableChannel(Channel):
     """Stub for TCP-like channels"""

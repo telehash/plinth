@@ -32,7 +32,7 @@ class Switch(DatagramServer):
                 raise ValueError("No identity key specified")
             else:
                 self.id = SwitchID()
-        if isinstance(key, (str, unicode)):
+        elif isinstance(key, (str, unicode)):
             self.id = SwitchID(key=key)
             if not self.id.is_private:
                 raise ValueError("Need private key for local identity")
@@ -106,7 +106,7 @@ class Switch(DatagramServer):
         remote = RemoteSwitch(self, switch_id)
         self.switches[switch_id.hash_name] = remote
         return remote
- 
+
 
 class RemoteSwitch(object):
     def __init__(self, local, switch_id):

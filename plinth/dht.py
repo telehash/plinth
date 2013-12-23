@@ -34,6 +34,6 @@ class DHT(object):
             pass
         elif hn in self.switches:
             ip, port = self.switches[hn].address
-            see = ','.join((hn,ip,str(port)))
+            see = ','.join((hn, ip, str(port)))
             see_list.append(see)
         return see_list

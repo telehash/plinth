@@ -1,37 +1,39 @@
 # -*- coding: utf-8 -*-
 
-import os
-from tomcrypt import ecc
-from tomcrypt.hash import sha256
-from tomcrypt.cipher import aes
-
-from . import packet
 from .log import log
 from .identity import SwitchID
-from .channels import Channel
 
 
 class DHT(object):
     """Manages information about remote Switches and Lines"""
-    def __init__(self, local, inq, sendto, seeds):
-        self.local = local
-        self.sendto = sendto
-        self.seeds = seeds
-        self.inq = inq
+    def __init__(self, local, lines, switches):
         self.kbucket = []
-        self.known_hashes = {}
-        self.lines = {}
+        self.local = local
+        self.lines = lines
+        self.switches = switches
 
     def maintain(self):
+        """DHT Maintenance
+
+        initial TODO:
+        put active lines into kbuckets
+        remove inactive lines from kbuckets
+        remove remaining excess lines from kbuckets
+        ping near-expired lines still in kbuckets
+        signal unbucketed lines to check for active user channels?
+        expire old switches?
+        """
         pass
 
-    def seek(self, switch):
+    def seek(self, hn):
         see_list = []
-        hn = switch.hash_name
-        bkt = self.local.kdist(switch)
+        switch_id = SwitchID(hn)
+        bkt = self.local.kdist(switch_id)
         log.debug("%s in bucket: %s" % (hn, bkt))
-        if hn in self.known_hashes:
-            ip, port = self.known_hashes[hn][1]
+        if hn == self.local.hash_name:
+            pass
+        elif hn in self.switches:
+            ip, port = self.switches[hn].address
             see = ','.join((hn,ip,str(port)))
             see_list.append(see)
         return see_list

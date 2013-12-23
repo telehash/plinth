@@ -13,6 +13,8 @@ from .identity import SwitchID
 from .packet import Packet
 from .line import Line
 from .channel import Channel
+from .dht import DHT
+from .exceptions import *
 
 
 class Switch(DatagramServer):
@@ -43,6 +45,9 @@ class Switch(DatagramServer):
         log.debug('My hash name: %s' % self.id.hash_name)
         log.debug('Listening for open packets on port %i' % self.address[1])
         super(Switch, self).start()
+        #All right, this is getting close to the last straw...
+        self.switches[self.id.hash_name] = self.id
+        self.dht = DHT(self.id, self.lines, self.switches)
         for seed in self.seeds:
             seed_id = SwitchID(hash_name=seed['hashname'],
                                key=seed['pubkey'])
@@ -51,6 +56,7 @@ class Switch(DatagramServer):
             address = (seed['ip'], seed['port'])
             remote.new_line(address)
             self.ping(seed_id.hash_name)
+        self.dht.maintain()
 
     def handle(self, data, address):
         log.debug('Received %i bytes from %s' % (len(data), address[0]))
@@ -81,7 +87,7 @@ class Switch(DatagramServer):
                 #TODO: container rather than the direct line object
                 self.lines[p.line].recv(p, address)
             #Packet dropped otherwise
-        except Exception, err:
+        except PacketException, err:
             log.debug('Invalid Packet: %s' % err)
 
     def open_channel(self, hash_name, ctype, initial_data=None):
@@ -95,6 +101,12 @@ class Switch(DatagramServer):
     def ping(self, hash_name):
         return self.open_channel(hash_name, 'seek', self.id.hash_name)
 
+    #Stopgap that should probably become the default
+    def add_remote(self, switch_id):
+        remote = RemoteSwitch(self, switch_id)
+        self.switches[switch_id.hash_name] = remote
+        return remote
+ 
 
 class RemoteSwitch(object):
     def __init__(self, local, switch_id):
@@ -113,10 +125,7 @@ class RemoteSwitch(object):
         self.line.complete(remote_line, secret)
 
     def new_line(self, address):
-        """Creates or replaces a secure line to the remote switch
-
-        TODO: Look into gevent.event to detect response opens
-        """
+        """Creates or replaces a secure line to the remote switch"""
         self.address = address
         if self.line:
             log.debug('Invalidating previous line: %s' % self.line.id)
@@ -175,6 +184,10 @@ class RemoteSwitch(object):
         self.local.sendto(data, self.address)
 
     def recv(self, p, address):
+        if not self.line.is_complete:
+            log.debug('Quick restart, remote line still open?')
+            log.debug('Hashname: %s' % self.id.hash_name)
+            return
         data, body = self.line.recv(p.iv, p.payload)
         c = data.get('c')
         if c is None:
@@ -185,7 +198,7 @@ class RemoteSwitch(object):
             t = data.get('type')
             if not isinstance(t, (str, unicode)):
                 return
-            ch = Channel.incoming(self.send, c, t, data, body)
+            ch = Channel.incoming(self, t, c, data, body)
             self.channels[c] = ch
         else:
             candidate.recv(data, body)
@@ -209,8 +222,10 @@ class RemoteSwitch(object):
         TODO: probably need to add a lock here
         """
         log.debug('Open from: %s' % self.id.hash_name)
-        log.debug('Line: %s from %s' % (self.line.id, self.line.rid))
-        log.debug('At: %i' % (p.at))
+        if self.line:
+            #We're expecting this or we might need to invalidate?
+            log.debug('Line: %s from %s' % (self.line.id, self.line.rid))
+            log.debug('At: %i' % (p.at))
         if self.line and self.line_time == 0:
             #we've been waiting for our first open
             self.line_time = p.at
@@ -223,6 +238,7 @@ class RemoteSwitch(object):
             self._ecdh(p.line, p.ecc)
 
     def open_channel(self, ctype, initial_data):
-        ch = Channel(self.send, None, ctype)
+        ch = Channel.outgoing(self, ctype)
         self.channels[ch.c] = ch
-        ch.send(initial_data)
+        ch.init(initial_data)
+        return ch

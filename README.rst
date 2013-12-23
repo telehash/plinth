@@ -19,11 +19,9 @@ you can find at: https://github.com/telehash/thjs/blob/master/seeds.json
 
 Now, from within your virtualenv:
 
-```
-$ cd plinth
-$ pip install -r requirements.txt
-$ python setup.py install
-$ examples/seed.py -v
-```
+| $ cd plinth
+| $ pip install -r requirements.txt
+| $ python setup.py install
+| $ examples/seed.py -v
 
 Now behold as your terminal fills with indecipherable debug details.

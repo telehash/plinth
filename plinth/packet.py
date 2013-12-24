@@ -15,16 +15,12 @@ from tomcrypt.cipher import aes
 
 from .log import log
 from .identity import SwitchID
+from .exceptions import *
 
 try:
     import simplejson as json
 except ImportError:
     import json
-
-
-# Maybe make this global...
-class PacketException(ValueError):
-    """There was an error encoding or decoding your packet."""
 
 
 class Packet(object):

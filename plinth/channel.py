@@ -5,7 +5,6 @@ This should end up as the main user interface to Plinth.
 """
 
 import os
-from collections import Counter
 
 from .log import log
 from .identity import SwitchID

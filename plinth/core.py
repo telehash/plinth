@@ -23,7 +23,7 @@ class Switch(DatagramServer):
     Used to communicate securely with other applications over the TeleHash
     mesh network.
     """
-    def __init__(self, listener=0, key=None, ephemeral=False, seeds=None):
+    def __init__(self, listener=0, key=None, ephemeral=False, seeds=[]):
         super(Switch, self).__init__(listener)
         self.switches = {}
         self.lines = {}

@@ -38,7 +38,7 @@ def run_seed(keyfile, seedfile, port):
     except Exception, msg:
         log.warn('Unable to read initial seed list:')
         log.warn(msg)
-        seed_list = None
+        seed_list = []
         pass
 
     seed = plinth.Switch(listener=port, key=id_key, seeds=seed_list)

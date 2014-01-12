@@ -53,6 +53,7 @@ class Packet(object):
             if 'sig' not in wrapper:
                 raise PacketException('Missing signature in open')
             self.enc_sig = wrapper['sig'].decode('base64')
+        self.t = t
 
     def read_open(self, me, sender_ecc):
         """Decode this received open packet"""

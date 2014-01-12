@@ -19,8 +19,6 @@ class Channel(object):
     def __init__(self, remote, t=None, c=None):
         self.remote = remote
         self.transmit = remote.send
-        #hahahahahahahaha, you idiot
-        self.local = remote.local
         self.c = c
         self.t = t
         if self.c is None:
@@ -30,7 +28,7 @@ class Channel(object):
         log.debug("Channel %s recv:\n%s" % (self.c, data))
         self.handle_unknown(data, body)
 
-    def init(self, data):
+    def start(self, data):
         custom = {'_': data}
         self._send(custom)
         #insert "wait for acceptance of channel" behavior
@@ -90,10 +88,11 @@ class ProtocolChannel(Channel):
         if c is not None:
             inbound = True
         super(ProtocolChannel, self).__init__(remote, t, c)
+        self.dht = remote.dht
         if inbound:
-            self.init(data=None, inbound=True)
+            self.start(data=None, inbound=True)
 
-    def init(self, data, inbound=False):
+    def start(self, data, inbound=False):
         if self.t == 'seek':
             if inbound:
                 self.recv = self.handle_seek
@@ -114,23 +113,13 @@ class ProtocolChannel(Channel):
     def handle_seek(self, data, body):
         hn = data['seek']
         log.debug('Remote seeking: %s' % hn)
-        see_list = self.local.dht.seek(hn)
+        see_list = self.dht.seek(hn)
         resp = {'end': True, 'see': see_list}
         self._send(resp)
 
     def handle_connect(self, data, body):
-        paths = data.get('paths')
+        paths = data.get('paths', [])
         connect_id = SwitchID(key=body)
-        remote = self.local.switches.get(connect_id.hash_name)
-        if remote is not None:
-            remote.id.found_key(body)
-        else:
-            remote = self.local.add_remote(connect_id)
-        if paths is not None:
-            for path in paths:
-                if path['type'] == 'ipv4':
-                    address = (path['ip'], path['port'])
-                    remote.new_line(address)
-                    self.local.ping(connect_id.hash_name)
-                    #no multi-homing yet, so quit now
-                    return
+        log.debug('\nconnect from %s to %s\n' % 
+                  (self.remote.id.hash_name, connect_id.hash_name))
+        self.dht.connect(connect_id, paths)

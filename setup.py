@@ -11,7 +11,7 @@ with open('LICENSE') as f:
 
 setup(
     name='plinth',
-    version='0.0.10',
+    version='0.0.11',
     description='Python Library for InterNetworking with TeleHash',
     long_description=readme,
     author='David Van Duzer',

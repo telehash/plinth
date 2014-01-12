@@ -70,6 +70,7 @@ class Channel(object):
             return
         err = '%s currently unimplemented' % self.t
         resp = {'end': True, 'err': err}
+        log.debug('To %s: %s' % (remote.id.hash_name, err))
         self._send(resp)
 
 

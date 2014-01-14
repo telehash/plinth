@@ -42,19 +42,20 @@ class DHT(object):
                 see_list.append(see)
         return see_list
 
-    def register(self, switch_id, paths=[]):
+    def register(self, switch_id, paths=[], start=True):
         remote = self.active.get(switch_id.hash_name)
         if remote is None:
             remote = RemoteSwitch(switch_id, self)
             self.active[switch_id.hash_name] = remote
             remote.path_hint(paths)
-            remote.start()
+            if start:
+                remote.start()
         elif switch_id.known:
             remote.id.found_key(switch_id.pub_key_der)
         return remote
 
     def handle_open(self, switch_id, p, address):
-        remote = self.register(switch_id)
+        remote = self.register(switch_id, start=False)
         remote.handle_open(p, address)
 
     def handle_line(self, p, address):
@@ -70,9 +71,6 @@ class DHT(object):
         else:
             log.debug('connect for unknown hash')
         remote = self.register(switch_id, paths)
-        #apparently not always redundant
-        remote.path_hint(paths)
-        remote.start()
 
     def open_channel(self, hash_name, ctype, initial_data=None):
         log.debug('opening {} channel to: {}'.format(ctype, hash_name))

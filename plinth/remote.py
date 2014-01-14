@@ -64,7 +64,7 @@ class RemoteSwitch(object):
             else:
                 log.debug('TODO: recursive seek/peer')
 
-    def new_line(self):
+    def new_line(self, retry=2):
         """Creates or replaces a secure line to the remote switch"""
         if self.line:
             log.debug('Invalidating previous line: %s' % self.line.id)
@@ -90,12 +90,13 @@ class RemoteSwitch(object):
             self.local_id.pub_key_der)
         self._send_open()
         retried = 0
-        gevent.sleep(1)
-        while not self.line.is_complete and retried < 2:
+        while retried < retry:
+            gevent.sleep(1)
+            if self.line.is_complete:
+                break
             self._send_open()
             retried += 1
             log.debug('open retry %i' % retried)
-            gevent.sleep(1)
 
     def send(self, data, timeout=5):
         """Take a Channel packet, wrap it in a line, and send
@@ -166,7 +167,9 @@ class RemoteSwitch(object):
             #we've been waiting for our first open
             self.line_time = p.at
         if self.line_time < p.at:
-            self.new_line()
+            self.new_line(retry=0)
+            self._ecdh(p.line, p.ecc)
+            return
         if self.line.is_complete:
             #remote didn't get our response open
             self._send_open()

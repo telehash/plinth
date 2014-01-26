@@ -9,6 +9,15 @@ with open('README.rst') as f:
 with open('LICENSE') as f:
     license = f.read()
 
+packages = [
+    'plinth'
+]
+
+requires = [
+    'PyTomCrypt >= 0.9.0',
+    'gevent >= 1.0'
+]
+
 setup(
     name='plinth',
     version='0.0.12',
@@ -18,12 +27,12 @@ setup(
     author_email='dvd@tennica.net',
     url='https://github.com/telehash/plinth',
     license=license,
-    packages=find_packages(exclude=('tests', 'docs')),
-    install_requires=[
-        'PyTomCrypt >= 0.9.0',
-        'gevent >= 1.0'
-    ],
-    classifiers=[
+    packages=packages,
+    package_data = {'': ['LICENSE']},
+    package_dir = {'plinth': 'plinth'},
+    include_package_data=True,
+    install_requires=requires,
+    classifiers=(
         'Development Status :: 3 - Alpha',
         'Environment :: Console',
         'Intended Audience :: Developers',
@@ -35,5 +44,5 @@ setup(
         'Topic :: Security',
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Topic :: System :: Networking',
-    ],
+    ),
 )

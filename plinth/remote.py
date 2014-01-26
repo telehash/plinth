@@ -63,7 +63,7 @@ class RemoteSwitch(gevent.Greenlet):
                 ip = path.get('ip')
                 port = path.get('port')
                 pri = path.get('priority', 0)
-                self.paths[(ip,port)] += pri
+                self.paths[(ip, port)] += pri
 
     def best_path(self):
         ranked = sorted(self.paths.iteritems(), key=itemgetter(1))

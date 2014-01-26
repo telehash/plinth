@@ -13,6 +13,7 @@ class SwitchID(object):
     Python integers internally. We'll see how that goes.
     """
     key = None
+
     def __init__(self, hash_name=None, key=None):
 
         if isinstance(key, (str, unicode)):

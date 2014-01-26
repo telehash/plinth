@@ -72,13 +72,13 @@ class Switch(DatagramServer):
             log.debug('Invalid Packet: %s' % err)
 
     def open_channel(self, hash_name, ctype, initial_data=None):
-        ch = gevent.spawn(self.dht.open_channel, 
-                hn, cytpe, initial_data)
+        ch = gevent.spawn(self.dht.open_channel,
+                          hn, cytpe, initial_data)
         ch.get(timeout=5)
         return ch
 
     def ping(self, hn):
         ch = gevent.spawn(self.dht.open_channel,
-                hn, 'seek', self.id.hash_name)
+                          hn, 'seek', self.id.hash_name)
         ch.get(timeout=5)
         return ch

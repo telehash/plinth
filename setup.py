@@ -11,13 +11,29 @@ with open('LICENSE') as f:
 
 setup(
     name='plinth',
-    version='0.0.11',
+    version='0.0.12',
     description='Python Library for InterNetworking with TeleHash',
     long_description=readme,
     author='David Van Duzer',
     author_email='dvd@tennica.net',
     url='https://github.com/telehash/plinth',
     license=license,
-    packages=find_packages(exclude=('tests', 'docs'))
+    packages=find_packages(exclude=('tests', 'docs')),
+    install_requires=[
+        'PyTomCrypt >= 0.9.0',
+        'gevent >= 1.0'
+    ],
+    classifiers=[
+        'Development Status :: 3 - Alpha',
+        'Environment :: Console',
+        'Intended Audience :: Developers',
+        'License :: OSI Approved :: MIT License',
+        'Operating System :: MacOS :: MacOS X',
+        'Operating System :: POSIX',
+        'Programming Language :: Python :: 2.7',
+        'Topic :: Internet',
+        'Topic :: Security',
+        'Topic :: Software Development :: Libraries :: Python Modules',
+        'Topic :: System :: Networking',
+    ],
 )
-

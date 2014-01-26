@@ -20,7 +20,6 @@ class Switch(DatagramServer):
     """
     def __init__(self, listener=0, key=None, ephemeral=False, seeds=[]):
         super(Switch, self).__init__(listener)
-        self.switches = {}
         if key is None:
             if not ephemeral:
                 raise ValueError("No identity key specified")
@@ -40,7 +39,6 @@ class Switch(DatagramServer):
         log.debug('My hash name: %s' % self.id.hash_name)
         log.debug('Listening for open packets on port %i' % self.address[1])
         super(Switch, self).start()
-        ping_list = []
         for seed in self.seeds:
             seed_id = SwitchID(hash_name=seed['hashname'],
                                key=seed['pubkey'])
@@ -55,11 +53,7 @@ class Switch(DatagramServer):
                 #ipv6 support requires a slightly more extensive rewrite
                 continue
             remote = self.dht.register(seed_id, paths)
-            ping_list.append(seed_id.hash_name)
-        #TODO: replace with initial maintenance
-        for hn in ping_list:
-            self.ping(hn)
-        self.dht.maintain()
+        self.dht.start()
 
     def handle(self, data, address):
         log.debug('Received %i bytes from %s' % (len(data), address[0]))
@@ -77,13 +71,14 @@ class Switch(DatagramServer):
         except PacketException, err:
             log.debug('Invalid Packet: %s' % err)
 
-    """
     def open_channel(self, hash_name, ctype, initial_data=None):
-    """
-    def open_channel(self, *args, **kwargs):
-        ch = gevent.spawn(self.dht.open_channel, *args, **kwargs)
+        ch = gevent.spawn(self.dht.open_channel, 
+                hn, cytpe, initial_data)
         ch.get(timeout=5)
         return ch
 
-    def ping(self, hash_name):
-        return self.open_channel(hash_name, 'seek', self.id.hash_name)
+    def ping(self, hn):
+        ch = gevent.spawn(self.dht.open_channel,
+                hn, 'seek', self.id.hash_name)
+        ch.get(timeout=5)
+        return ch

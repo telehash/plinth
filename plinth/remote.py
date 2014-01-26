@@ -6,6 +6,8 @@ from collections import defaultdict
 from operator import itemgetter
 
 import gevent
+from gevent.queue import Queue
+from gevent.event import Event
 from tomcrypt import ecc
 from tomcrypt.hash import sha256
 from tomcrypt.cipher import aes
@@ -14,12 +16,13 @@ from .log import log
 from .identity import SwitchID
 from .packet import Packet
 from .line import Line
-from .channel import Channel
+from .channel import Channel, DurableChannel
 from .exceptions import *
 
 
-class RemoteSwitch(object):
+class RemoteSwitch(gevent.Greenlet):
     def __init__(self, switch_id, dht):
+        super(RemoteSwitch, self).__init__()
         self.id = switch_id
         self.local_id = dht.me
         self.transmit = dht.transmit
@@ -28,6 +31,23 @@ class RemoteSwitch(object):
         self.line_time = 0
         self.channels = {}
         self.paths = defaultdict(lambda: 0)
+        self.packetq = Queue()
+        self.openq = Queue()
+
+    def _run(self):
+        self.running = True
+        #TODO: This might be a bad way to green-sublet
+        gevent.spawn(self.open_handler)
+        while self.running:
+            p, address = self.packetq.get()
+            self.recv(p, address)
+            gevent.sleep(0)
+
+    def open_handler(self):
+        while self.running:
+            p, address = self.openq.get()
+            self.handle_open(p, address)
+            gevent.sleep(0)
 
     def _ecdh(self, remote_line, remote_ecc):
         secret = self._ecc.shared_secret(ecc.Key(remote_ecc))
@@ -55,16 +75,7 @@ class RemoteSwitch(object):
     def confirm_path(self, address):
         self.paths[address] = time.time() * 1000
 
-    def start(self):
-        if self.line:
-            pass
-        else:
-            if self.id.known:
-                gevent.spawn(self.new_line)
-            else:
-                log.debug('TODO: recursive seek/peer')
-
-    def new_line(self, retry=2):
+    def new_line(self):
         """Creates or replaces a secure line to the remote switch"""
         if self.line:
             log.debug('Invalidating previous line: %s' % self.line.id)
@@ -89,14 +100,6 @@ class RemoteSwitch(object):
             self.line.id,
             self.local_id.pub_key_der)
         self._send_open()
-        retried = 0
-        while retried < retry:
-            gevent.sleep(1)
-            if self.line.is_complete:
-                break
-            self._send_open()
-            retried += 1
-            log.debug('open retry %i' % retried)
 
     def send(self, data, timeout=5):
         """Take a Channel packet, wrap it in a line, and send
@@ -104,8 +107,13 @@ class RemoteSwitch(object):
         TODO: implement timeout to wait for line
         """
         if not self.line:
-            log.debug('TODO: fix send without line')
-            return
+            l = gevent.spawn(self.new_line)
+            l.join(timeout)
+            if l.successful():
+                pass
+            else:
+                log.debug('line timeout')
+                return
         if self.line.is_complete:
             self._send(self.line.send(data))
         else:
@@ -137,10 +145,17 @@ class RemoteSwitch(object):
             t = data.get('type')
             if not isinstance(t, (str, unicode)):
                 return
-            ch = Channel.incoming(self, t, c, data, body)
-            self.channels[c] = ch
+            if t[:1] != '_':
+                ch = Channel(self, t, c)
+                self.dht.channel_handler(ch, data, body)
+            elif 'seq' in data.keys():
+                ch = DurableChannel(self, t, c)
+            else:
+                #TODO: get remote-initiated channel handler from user
+                ch = Channel(self, t, c)
+                self.channels[c] = ch
         else:
-            candidate.recv(data, body)
+            candidate.inq.put((data, body))
 
     def _send_open(self):
         iv = os.urandom(16)
@@ -159,6 +174,13 @@ class RemoteSwitch(object):
         """Deal with incoming open from this remote switch"""
         self.confirm_path(address)
         log.debug('Open from: %s' % self.id.hash_name)
+        recv_at = p.at
+        while not self.openq.empty():
+            # pick any single open with the latest timestamp
+            cand_p, cand_addr = self.openq.get()
+            self.confirm_path(cand_addr)
+            if cand_p.at > recv_at:
+                p = cand_p
         if self.line:
             #We're expecting this or we might need to invalidate?
             log.debug('Line: %s from %s' % (self.line.id, self.line.rid))
@@ -176,8 +198,12 @@ class RemoteSwitch(object):
         else:
             self._ecdh(p.line, p.ecc)
 
-    def open_channel(self, ctype, initial_data):
-        ch = Channel.outgoing(self, ctype)
+    def open_channel(self, ctype, first_packet=None, timeout=10):
+        ch = Channel(self, ctype)
         self.channels[ch.c] = ch
-        ch.start(initial_data)
+        ch.start()
+        if first_packet:
+            first_packet['type'] = ctype
+            ch._send(first_packet)
+        #TODO: "wait for first response" logic is all over the place
         return ch

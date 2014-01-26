@@ -24,8 +24,8 @@ class DHT(gevent.Greenlet):
 
     def _run(self):
         self.running = True
-        for r in self.active:
-            gevent.spawn(self.send_seek, r, self.me.hash_name)
+        for remote in self.active.values():
+            gevent.spawn(self.send_seek, remote, self.me.hash_name)
         while self.running:
             self.maintain()
             gevent.sleep(30)
@@ -94,25 +94,28 @@ class DHT(gevent.Greenlet):
         wait for see, and update DHT
         """
         seek = {'seek': hn}
-        self.open_channel(remote, 'seek', seek)
+        self._open_channel(remote, 'seek', (seek,''))
 
     def send_peer(self, remote, hn):
         pass
 
-    def channel_handler(self, ch, data, body):
+    def channel_handler(self, remote, ch, data, body):
         log.debug('DHT recv: {}'.format(ch.t))
         if ch.t == 'seek':
             hn = data['seek']
             log.debug('Remote seeking: {}'.format(hn))
             see_list = self.seek(hn)
             resp = {'end': True, 'see': see_list}
-            ch._send(resp)
+            ch.send(resp)
             return
         elif ch.t == 'peer':
             #TODO: Check for desire to be discoverable first
-            #TODO: Send connect
-            resp = {'end': True, 'err': 'unimplemented'}
-            ch._send(resp)
+            hn = data.get('peer')
+            #TODO: Distinguish between "seen hashname" and "active line"
+            if hn in self.active:
+                switch_id = SwitchID(hn)
+                peer_to = self.register(switch_id)
+                self.send_connect(peer_to, remote)
             return
         if ch.t == 'connect':
             paths = data.get('paths', [])
@@ -120,15 +123,38 @@ class DHT(gevent.Greenlet):
             self.connect(connect_id, paths)
             return
 
+    def send_connect(self, peer_to, remote):
+        paths = peer_to.all_paths()
+        if len(paths) > 0:
+            connect = ({'paths': paths}, remote.id.pub_key_der)
+            self._open_channel(peer_to, 'connect', connect)
+
     def connect(self, switch_id, paths):
-        if switch_id.hash_name in self.active:
-            log.debug('connect for known: {}'.format(switch_id.hash_name))
+        #attempting to debug rogue connects
+        hn = switch_id.hash_name
+        alert = False
+        if hn in self.active:
+            alert = True
         else:
-            log.debug('connecting to: {}'.format(switch_id.hash_name))
+            log.debug('connecting to: {}'.format(hn))
         remote = self.register(switch_id, paths)
+        if alert:
+            log.debug('connect for known: {}'.format(hn))
+            if remote.line:
+                log.debug('line in progress: {} to {}'
+                    .format(remote.line.rid, remote.line.id))
+                log.debug('line time:'.format(remote.line_time))
+            else:
+                #stopgap
+                log.debug('attempting to force connect')
+                gevent.spawn_later(1, self.send_seek, remote, self.me.hash_name)
+
+    def _open_channel(self, remote, ctype, initial_data=None):
+        log.debug('opening {} channel to: {}'
+            .format(ctype, remote.id.hash_name))
+        return remote.open_channel(ctype, initial_data)
 
     def open_channel(self, hash_name, ctype, initial_data=None):
-        log.debug('opening {} channel to: {}'.format(ctype, hash_name))
         switch_id = SwitchID(hash_name)
         remote = self.register(switch_id)
-        return remote.open_channel(ctype, initial_data)
+        return self._open_channel(remote, ctype, initial_data)

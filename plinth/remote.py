@@ -72,6 +72,18 @@ class RemoteSwitch(gevent.Greenlet):
         else:
             return None
 
+    def all_paths(self):
+        #more terrible ipv4 stopgap stuff
+        paths_array = []
+        for path, pri in self.paths.iteritems():
+            if pri > 0:
+                valid_path = {'type': 'ipv4'}
+                valid_path['ip'] = path[0]
+                valid_path['port'] = path[1]
+                paths_array.append(valid_path)
+        log.debug('PATHS ARRAY: {}'.format(paths_array))
+        return paths_array
+
     def confirm_path(self, address):
         self.paths[address] = time.time() * 1000
 
@@ -101,7 +113,7 @@ class RemoteSwitch(gevent.Greenlet):
             self.local_id.pub_key_der)
         self._send_open()
 
-    def send(self, data, timeout=5):
+    def send(self, data, body='', timeout=5):
         """Take a Channel packet, wrap it in a line, and send
 
         TODO: implement timeout to wait for line
@@ -115,11 +127,11 @@ class RemoteSwitch(gevent.Greenlet):
                 log.debug('line timeout')
                 return
         if self.line.is_complete:
-            self._send(self.line.send(data))
+            self._send(self.line.send(data, body))
         else:
             gevent.sleep(1)
             if self.line.is_complete:
-                self._send(self.line.send(data))
+                self._send(self.line.send(data, body))
             else:
                 log.debug('Brutally dropping packets until line is up.')
 
@@ -147,7 +159,7 @@ class RemoteSwitch(gevent.Greenlet):
                 return
             if t[:1] != '_':
                 ch = Channel(self, t, c)
-                self.dht.channel_handler(ch, data, body)
+                self.dht.channel_handler(self, ch, data, body)
             elif 'seq' in data.keys():
                 ch = DurableChannel(self, t, c)
             else:
@@ -189,7 +201,7 @@ class RemoteSwitch(gevent.Greenlet):
             #we've been waiting for our first open
             self.line_time = p.at
         if self.line_time < p.at:
-            self.new_line(retry=0)
+            self.new_line()
             self._ecdh(p.line, p.ecc)
             return
         if self.line.is_complete:
@@ -198,12 +210,13 @@ class RemoteSwitch(gevent.Greenlet):
         else:
             self._ecdh(p.line, p.ecc)
 
-    def open_channel(self, ctype, first_packet=None, timeout=10):
+    def open_channel(self, ctype, initial_data=None, timeout=10):
         ch = Channel(self, ctype)
         self.channels[ch.c] = ch
         ch.start()
-        if first_packet:
-            first_packet['type'] = ctype
-            ch._send(first_packet)
+        if initial_data is not None:
+            d, b = initial_data
+            d['type'] = ctype
+            ch.send(d, b)
         #TODO: "wait for first response" logic is all over the place
         return ch

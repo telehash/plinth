@@ -48,13 +48,9 @@ class Channel(gevent.Greenlet):
         log.debug("Channel %s recv:\n%s" % (self.c, data))
         self.handle_unknown(data, body)
 
-    def send(self, data):
-        custom = {'_': data}
-        self._send(custom)
-
-    def _send(self, data):
+    def send(self, data, body=''):
         data['c'] = self.c
-        self.transmit(data)
+        self.transmit(data, body)
 
     def handle_unknown(self, data, body):
         if 'err' in data:
@@ -65,7 +61,7 @@ class Channel(gevent.Greenlet):
         err = '%s currently unimplemented' % self.t
         resp = {'end': True, 'err': err}
         #log.debug('To %s: %s' % (remote.id.hash_name, err))
-        self._send(resp)
+        self.send(resp)
 
 
 class DurableChannel(Channel):

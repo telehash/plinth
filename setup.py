@@ -20,7 +20,7 @@ requires = [
 
 setup(
     name='plinth',
-    version='0.0.13',
+    version='0.0.14',
     description='Python Library for InterNetworking with TeleHash',
     long_description=readme,
     author='David Van Duzer',

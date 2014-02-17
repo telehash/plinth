@@ -5,7 +5,7 @@ import time
 from tomcrypt.hash import sha256
 from tomcrypt.cipher import aes
 
-from .packet import Packet
+from . import packet
 from .log import log
 
 
@@ -44,13 +44,13 @@ class Line(object):
         self.secret = secret
 
     def recv(self, iv, pkt):
-        data, body = Packet.decode(aes(self.aes_dec, iv).decrypt(pkt))
+        data, body = packet.decode(aes(self.aes_dec, iv).decrypt(pkt))
         return data, body
 
     def send(self, data, body=''):
         iv = os.urandom(16)
         log.debug('Sending on Line %s:' % self.id)
         log.debug(data)
-        payload = Packet.encode(data, body)
+        payload = packet.encode(data, body)
         enc_payload = aes(self.aes_enc, iv).encrypt(payload)
-        return Packet.wrap_line(self.rid, iv, enc_payload)
+        return packet.wrap_line(self.rid, iv, enc_payload)

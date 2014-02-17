@@ -69,16 +69,16 @@ class DHT(gevent.Greenlet):
             remote.id.found_key(switch_id.pub_key_der)
         return remote
 
-    def handle_open(self, switch_id, p, address):
+    def handle_open(self, switch_id, sender_ecc, line_id, at, address):
         remote = self.register(switch_id)
-        remote.openq.put((p, address))
+        remote.openq.put((sender_ecc, line_id, at, address))
 
-    def handle_line(self, p, address):
-        remote = self.linemap.get(p.line)
+    def handle_line(self, wrapper, payload, address):
+        remote = self.linemap.get(wrapper['line'])
         if remote is not None:
-            remote.packetq.put((p, address))
+            remote.packetq.put((wrapper, payload, address))
         else:
-            log.debug('unrecognized line: %s' % p.line)
+            log.debug('unrecognized line: %s' % wrapper['line'])
 
     def locate(self, hn):
         """

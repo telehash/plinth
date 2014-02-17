@@ -7,7 +7,8 @@ from gevent.server import DatagramServer
 
 from .log import log
 from .identity import SwitchID
-from .packet import Packet
+from . import packet
+from . import crypto
 from .dht import DHT
 from .exceptions import *
 
@@ -61,13 +62,15 @@ class Switch(DatagramServer):
             #Empty / NAT-punching packets can be ignored
             return
         try:
-            p = Packet(data)
-            if p.open:
-                sender_ecc = self.id.decrypt(p.open)
-                sender = p.read_open(self.id.hash_name, sender_ecc)
-                self.dht.handle_open(sender, p, address)
+            wrapper, payload = packet.decode(data)
+            packet_type = packet.validate_wrapper(wrapper)
+            if packet_type == 'open':
+                sender_ecc = self.id.decrypt(wrapper['open'])
+                sender, line_id, at = crypto.read_open(
+                    self.id.hash_name, sender_ecc, wrapper, payload)
+                self.dht.handle_open(sender, sender_ecc, line_id, at, address)
             else:
-                self.dht.handle_line(p, address)
+                self.dht.handle_line(wrapper, payload, address)
         except PacketException, err:
             log.debug('Invalid Packet: %s' % err)
 

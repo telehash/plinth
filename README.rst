@@ -1,10 +1,7 @@
-plinth
-======
-
-Python Library for InterNetworking with TeleHash
-
 "Quickstart"
 ------------
+
+A better place to start might be http://telehash.org
 
 This will break. You were warned. :)
 

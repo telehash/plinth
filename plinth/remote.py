@@ -14,7 +14,7 @@ from tomcrypt.cipher import aes
 
 from .log import log
 from .identity import SwitchID
-from .packet import Packet
+from . import packet
 from .line import Line
 from .channel import Channel, DurableChannel
 from .exceptions import *
@@ -39,14 +39,14 @@ class RemoteSwitch(gevent.Greenlet):
         #TODO: This might be a bad way to green-sublet
         gevent.spawn(self.open_handler)
         while self.running:
-            p, address = self.packetq.get()
-            self.recv(p, address)
+            wrapper, payload, address = self.packetq.get()
+            self.recv(wrapper, payload, address)
             gevent.sleep(0)
 
     def open_handler(self):
         while self.running:
-            p, address = self.openq.get()
-            self.handle_open(p, address)
+            open_tuple = self.openq.get()
+            self.handle_open(open_tuple)
             gevent.sleep(0)
 
     def _ecdh(self, remote_line, remote_ecc):
@@ -107,7 +107,7 @@ class RemoteSwitch(gevent.Greenlet):
         self._ecc = ecc.Key(256)
         self._ecc_pub = self._ecc.public \
                             .as_string(format='der', ansi=True)
-        self._open = Packet.create_open(
+        self._open = packet.create_open(
             self.id.hash_name,
             self.line.id,
             self.local_id.pub_key_der)
@@ -141,16 +141,16 @@ class RemoteSwitch(gevent.Greenlet):
         log.debug('Sending %s to %s' % (len(data), address))
         self.transmit(data, address)
 
-    def recv(self, p, address):
+    def recv(self, wrapper, payload, address):
         self.confirm_path(address)
         if not self.line.is_complete:
             log.debug('Quick restart, remote line still open?')
             log.debug('Hashname: %s' % self.id.hash_name)
             return
-        data, body = self.line.recv(p.iv, p.payload)
+        iv = wrapper['iv'].decode('hex')
+        data, body = self.line.recv(iv, payload)
         c = data.get('c')
         if c is None:
-            #ideally push this kind of validation into the Packet class
             return
         candidate = self.channels.get(c)
         if candidate is None:
@@ -177,38 +177,42 @@ class RemoteSwitch(gevent.Greenlet):
         sig = self.local_id.sign(sha256(enc_body).digest())
         enc_sig = aes(aes_key.digest(), iv).encrypt(sig)
         o = self.id.encrypt(self._ecc_pub)
-        data = Packet.wrap_open(o, iv, enc_sig, enc_body)
+        data = packet.wrap_open(o, iv, enc_sig, enc_body)
         self._send(data)
         log.debug('Open to: %s' % self.id.hash_name)
         log.debug('Line: %s to %s' % (self.line.id, self.line.rid))
 
-    def handle_open(self, p, address):
+    def handle_open(self, open_tuple):
         """Deal with incoming open from this remote switch"""
-        self.confirm_path(address)
+        # getting quick and dirty again for a bit
+        #sender_ecc, line_id, at, address = open_tuple
+        self.confirm_path(open_tuple[3])
         log.debug('Open from: %s' % self.id.hash_name)
-        recv_at = p.at
+        recv_at = open_tuple[2]
         while not self.openq.empty():
             # pick any single open with the latest timestamp
-            cand_p, cand_addr = self.openq.get()
-            self.confirm_path(cand_addr)
-            if cand_p.at > recv_at:
-                p = cand_p
+            cand_tuple = self.openq.get()
+            sender_ecc, line_id, at, address = open_tuple
+            self.confirm_path(cand_tuple[3])
+            if cand_tuple[2] > recv_at:
+                open_tuple = cand_tuple
+        sender_ecc, line_id, at, address = open_tuple
         if self.line:
             #We're expecting this or we might need to invalidate?
             log.debug('Line: %s from %s' % (self.line.id, self.line.rid))
-            log.debug('At: %i' % (p.at))
+            log.debug('At: %i' % (at))
         if self.line and self.line_time == 0:
             #we've been waiting for our first open
-            self.line_time = p.at
-        if self.line_time < p.at:
+            self.line_time = at
+        if self.line_time < at:
             self.new_line()
-            self._ecdh(p.line, p.ecc)
+            self._ecdh(line_id, sender_ecc)
             return
         if self.line.is_complete:
             #remote didn't get our response open
             self._send_open()
         else:
-            self._ecdh(p.line, p.ecc)
+            self._ecdh(line_id, sender_ecc)
 
     def open_channel(self, ctype, initial_data=None, timeout=10):
         ch = Channel(self, ctype)

@@ -14,13 +14,12 @@ packages = [
 ]
 
 requires = [
-    'PyTomCrypt >= 0.9.0',
-    'gevent >= 1.0'
+    'PyTomCrypt >= 0.10.1',
 ]
 
 setup(
     name='plinth',
-    version='0.0.14',
+    version='0.0.15',
     description='Python Library for InterNetworking with TeleHash',
     long_description=readme,
     author='David Van Duzer',

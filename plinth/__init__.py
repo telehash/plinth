@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
 
-from .core import Switch
-from .identity import SwitchID
+from . import e3x
+from . import hashname
 from .log import log

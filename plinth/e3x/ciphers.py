@@ -4,7 +4,10 @@
 Stub
 """
 
-from . import ciphers
+from . import cs1a, cs2a, cs3a
+
+#supported = {'1a': cs1a, '2a': cs2a, '3a': cs3a}
+supported = {'1a': cs1a}
 
 from tomcrypt.hash import sha256
 from binascii import unhexlify
@@ -17,13 +20,3 @@ except ImportError:
 
 from ..exceptions import *
 
-class Local(object):
-    pass
-
-class Exchange(object):
-    pass
-
-def generate():
-    for cs in ciphers.supported:
-        print(cs)
-    return

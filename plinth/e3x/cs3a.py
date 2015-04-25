@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
-from cipherset import CipherSet
+class CS3a(object):
+    pass
 
-class CS3a(CipherSet):
-
+"""
   ret->local_new = (void *(*)(lob_t, lob_t))local_new;
   ret->local_free = (void (*)(void *))local_free;
   ret->local_decrypt = (lob_t (*)(void *, lob_t))local_decrypt;
@@ -17,4 +17,5 @@ class CS3a(CipherSet):
   ret->ephemeral_free = (void (*)(void *))ephemeral_free;
   ret->ephemeral_encrypt = (lob_t (*)(void *, lob_t))ephemeral_encrypt;
   ret->ephemeral_decrypt = (lob_t (*)(void *, lob_t))ephemeral_decrypt;
+"""
 

@@ -4,8 +4,7 @@
 Stub
 """
 
-from . import cs1a, cs2a
-SUPPORTED_CIPHERSETS=['1a': cs1a,'2a': cs2a]
+from . import ciphers
 
 from tomcrypt.hash import sha256
 from binascii import unhexlify
@@ -16,14 +15,17 @@ try:
 except ImportError:
     import json
 
-from .exceptions import *
+from ..exceptions import *
 
 class Local(object):
-    def __init__(self, secrets=None)
+    def __init__(self, secrets=None):
         if secrets:
+            print('hello')
     pass
 
 def generate():
-    for cs in SUPPORTED_CIPHERSETS:
-        print(cs)
+    for csid, cs in ciphers.supported.items():
+        print(csid)
+        secret = cs.local_new()
+        print(secret.as_string())
     return

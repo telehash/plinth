@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from cipherset import CipherSet
-
-class CS2a(CipherSet):
+class CS2a(object):
     def local_new():
         pass
     def local_decrypt():
@@ -15,6 +13,6 @@ class CS2a(CipherSet):
         pass
     def ephemeral_encrypt():
         pass
-    def ephemeral_decrypt()
+    def ephemeral_decrypt():
         pass
 
